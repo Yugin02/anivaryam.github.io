@@ -1,4 +1,13 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+
+function useDebounce<T>(value: T, delay: number): T {
+  const [debouncedValue, setDebouncedValue] = useState(value);
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedValue(value), delay);
+    return () => clearTimeout(timer);
+  }, [value, delay]);
+  return debouncedValue;
+}
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -225,6 +234,10 @@ export function ImageCombinerTool() {
     return () => window.removeEventListener("keydown", handler);
   }, [selectedIds, images]);
 
+  // ── Debounced values for preview rendering ───────────────────────────────────
+  const debouncedGap = useDebounce(gap, 150);
+  const debouncedOuterPadding = useDebounce(outerPadding, 150);
+
   // ── Live Preview ────────────────────────────────────────────────────────────
 
   const renderPreview = useCallback(async () => {
@@ -242,8 +255,8 @@ export function ImageCombinerTool() {
       const result = await combineImages(loaded, {
         layout: layoutMode,
         sizing: sizingMode,
-        gap,
-        outerPadding,
+        gap: debouncedGap,
+        outerPadding: debouncedOuterPadding,
         backgroundColor: bgColor,
         format: outputFormat,
         quality: quality / 100,
@@ -271,7 +284,7 @@ export function ImageCombinerTool() {
     } catch {
       // Silent — preview failure is non-critical
     }
-  }, [images, layoutMode, sizingMode, gap, outerPadding, bgMode, customBg, outputFormat, quality, maxWidth]);
+  }, [images, layoutMode, sizingMode, debouncedGap, debouncedOuterPadding, bgMode, customBg, outputFormat, quality, maxWidth]);
 
   useEffect(() => {
     renderPreview();
