@@ -1,7 +1,7 @@
 import { Layout } from "@/components/layout/Layout";
 import { SEO } from "@/components/SEO";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Code2, FileCode, ArrowRight, Braces, Binary, Link as LinkIcon, Palette, Fingerprint, Regex, Hash, KeyRound, Clock, Globe, Search, QrCode, GitCompare, FileText, Image, Lock, LayoutTemplate, ImageDown } from "lucide-react";
+import { Code2, FileCode, ArrowRight, Braces, Binary, Link as LinkIcon, Palette, Fingerprint, Regex, Hash, KeyRound, Clock, Globe, Search, QrCode, GitCompare, FileText, Image, Lock, LayoutTemplate, ImageDown, Combine } from "lucide-react";
 import { Link } from "react-router-dom";
 
 const tools = [
@@ -172,6 +172,14 @@ const tools = [
     icon: ImageDown,
     path: "/tools/image-resizer",
     color: "text-[hsl(var(--syntax-cyan))]",
+  },
+  {
+    id: "image-combiner",
+    title: "Image Combiner",
+    description: "Upload multiple images and arrange them horizontally, vertically, or in a grid. Adjust spacing between images, outer padding, background color, and download as PNG, JPEG, or WebP.",
+    icon: Combine,
+    path: "/tools/image-combiner",
+    color: "text-primary",
   },
 ];
 

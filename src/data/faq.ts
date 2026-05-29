@@ -18,7 +18,7 @@ export const faqData: FAQItem[] = [
   // General Questions
   {
     question: "What free online developer tools are available on Anivaryam?",
-    answer: "Anivaryam provides 20+ free online developer tools, all browser-based with no signup required:\n\n• **Document Conversion**: [Word to HTML converter](/tools/word-to-html/), [CSV to JSON converter](/tools/csv-to-json/)\n• **Code Formatting**: [JSON formatter](/tools/json-formatter/), [text diff tool](/tools/text-diff/), code cleanup utilities\n• **Encoding & Decoding**: [Base64 encoder/decoder](/tools/base64/), [URL encoder/decoder](/tools/url-encoder/), [hash generator](/tools/hash-generator/), [JWT decoder](/tools/jwt-decoder/)\n• **Data Generation**: [UUID generator](/tools/uuid-generator/), [QR code generator](/tools/qr-code-generator/), [timestamp converter](/tools/timestamp-converter/)\n• **Testing & Utilities**: [regex tester](/tools/regex-tester/), [web scraper](/tools/web-scraper/), [color converter](/tools/color-converter/), [image tool](/tools/image-tool/)\n• **Cryptography**: [Random Universe Cipher](/tools/random-universe-cipher/) (post-quantum encryption)\n\nAll tools run entirely in your browser—no server uploads, no data storage, complete privacy.",
+    answer: "Anivaryam provides 21+ free online developer tools, all browser-based with no signup required:\n\n• **Document Conversion**: [Word to HTML converter](/tools/word-to-html/), [CSV to JSON converter](/tools/csv-to-json/)\n• **Code Formatting**: [JSON formatter](/tools/json-formatter/), [text diff tool](/tools/text-diff/), code cleanup utilities\n• **Encoding & Decoding**: [Base64 encoder/decoder](/tools/base64/), [URL encoder/decoder](/tools/url-encoder/), [hash generator](/tools/hash-generator/), [JWT decoder](/tools/jwt-decoder/)\n• **Data Generation**: [UUID generator](/tools/uuid-generator/), [QR code generator](/tools/qr-code-generator/), [timestamp converter](/tools/timestamp-converter/)\n• **Testing & Utilities**: [regex tester](/tools/regex-tester/), [web scraper](/tools/web-scraper/), [color converter](/tools/color-converter/), [image tool](/tools/image-tool/), [image combiner](/tools/image-combiner/)\n• **Cryptography**: [Random Universe Cipher](/tools/random-universe-cipher/) (post-quantum encryption)\n\nAll tools run entirely in your browser—no server uploads, no data storage, complete privacy.",
     category: "general",
   },
   {
@@ -135,8 +135,8 @@ export const faqData: FAQItem[] = [
     category: "tools",
   },
   {
-    question: "How accurate are the conversion tools?",
-    answer: "Our Anivaryam conversion tools are highly accurate:\n• Use our [Word to HTML converter](/tools/word-to-html/) to preserve formatting while cleaning up bloated code—perfect for **Word to HTML converter for blog posts**\n• Use our [CSV to JSON converter](/tools/csv-to-json/) to handle various delimiters and data types accurately\n• Use our [Base64 encoder/decoder](/tools/base64/) to support UTF-8 encoding for international characters—our **browser-based Base64 encoder** is free\n\nAll Anivaryam tools process data locally in your browser, ensuring consistent results.",
+    question: "Can I combine multiple images into one?",
+    answer: "Yes, Anivaryam includes a [free image combiner tool](/tools/image-combiner/) that lets you upload up to 20 images, arrange them horizontally, vertically, or in a grid (2, 3, or 4 columns), adjust spacing between images and padding around the result, and download the combined image as PNG, JPEG, or WebP. Choose between fit-to-row, keep original dimensions, or max-width constrained sizing. All processing happens in your browser — no uploads, complete privacy.",
     category: "tools",
   },
   // Technical & Support
