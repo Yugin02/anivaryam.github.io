@@ -379,20 +379,35 @@ export function ImageCombinerTool() {
                 ))}
               </div>
 
-              {/* Add more button */}
+              {/* Add more / Clear All */}
               <div className="flex justify-between items-center">
                 <p className="text-xs text-muted-foreground">
                   {images.length} / {MAX_IMAGES} images
                 </p>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => addMoreInputRef.current?.click()}
-                  disabled={images.length >= MAX_IMAGES}
-                >
-                  <Plus className="h-4 w-4 mr-1" />
-                  Add more
-                </Button>
+                <div className="flex gap-2">
+                  {images.length > 0 && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        imageUrlRefs.current.forEach((url) => URL.revokeObjectURL(url));
+                        imageUrlRefs.current.clear();
+                        setImages([]);
+                      }}
+                    >
+                      Clear all
+                    </Button>
+                  )}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => addMoreInputRef.current?.click()}
+                    disabled={images.length >= MAX_IMAGES}
+                  >
+                    <Plus className="h-4 w-4 mr-1" />
+                    Add more
+                  </Button>
+                </div>
                 <input
                   ref={addMoreInputRef}
                   type="file"
