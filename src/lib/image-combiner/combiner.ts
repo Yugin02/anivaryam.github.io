@@ -86,7 +86,7 @@ export async function combineImages(
   const rows: HTMLImageElement[][] = buildRows(images, layout);
 
   // ── Step 2: Calculate per-row dimensions based on sizing mode ─────────
-  const layoutResult = computeRowLayout(rows, sizing, maxWidth);
+  const layoutResult = computeRowLayout(rows, sizing, maxWidth, gap);
 
   // ── Step 3: Calculate total canvas dimensions ───────────────────────────
   const totalWidth = layoutResult.totalWidth + outerPadding * 2;
@@ -184,7 +184,8 @@ interface RowLayoutResult {
 function computeRowLayout(
   rows: HTMLImageElement[][],
   sizing: SizingMode,
-  maxWidth: number
+  maxWidth: number,
+  gap: number
 ): RowLayoutResult {
   const rowHeights: number[] = [];
   const rowWidths: number[] = [];
@@ -230,8 +231,11 @@ function computeRowLayout(
     const rowW = cw.reduce((a, b) => a + b, 0);
     rowWidths.push(rowW);
     totalWidth = Math.max(totalWidth, rowW);
-    totalHeight += rowH;
+    totalHeight += rowH + (rowWidths.length > 1 ? gap : 0);
   }
+
+  // Subtract the last inter-row gap (no gap after the final row)
+  if (rows.length > 1) totalHeight -= gap;
 
   return {
     rowHeights,
