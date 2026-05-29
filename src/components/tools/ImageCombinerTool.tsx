@@ -4,10 +4,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "@/hooks/use-toast";
 import {
-  Upload, X, GripVertical, Image as ImageIcon, Plus, Loader2, Combine
+  Upload, X, GripVertical, Image as ImageIcon, Plus, Loader2, Combine, Trash2,
 } from "lucide-react";
 import {
   combineImages,
@@ -33,6 +33,100 @@ type BgMode = "white" | "transparent" | "custom";
 
 const MAX_IMAGES = 20;
 
+type Preset = {
+  label: string;
+  layout: LayoutMode;
+  sizing: SizingMode;
+  gap: number;
+  outerPadding: number;
+  bgMode: BgMode;
+  maxWidth?: number;
+};
+
+const PRESETS: Preset[] = [
+  { label: "Social", layout: "horizontal", sizing: "fit-to-row", gap: 4, outerPadding: 8, bgMode: "white" },
+  { label: "Banner", layout: "horizontal", sizing: "max-width", gap: 0, outerPadding: 0, bgMode: "transparent", maxWidth: 1200 },
+  { label: "Gallery", layout: "grid-3", sizing: "fit-to-row", gap: 8, outerPadding: 16, bgMode: "white" },
+  { label: "Compact", layout: "grid-4", sizing: "keep-original", gap: 2, outerPadding: 4, bgMode: "white" },
+];
+
+function LayoutPreviewSvg({ layout }: { layout: LayoutMode }) {
+  const cell = (w: number, h: number) => (
+    <svg width={`${w}px`} height={`${h}px`} viewBox={`0 0 ${w} ${h}`} className="flex-shrink-0">
+      <rect width={w} height={h} rx="1" fill="currentColor" opacity="0.5" />
+    </svg>
+  );
+
+  if (layout === "horizontal") {
+    return (
+      <div className="flex gap-0.5 items-center mr-2">
+        {cell(12, 8)}
+        {cell(12, 8)}
+        {cell(12, 8)}
+      </div>
+    );
+  }
+  if (layout === "vertical") {
+    return (
+      <div className="flex flex-col gap-0.5 items-center mr-2">
+        {cell(8, 10)}
+        {cell(8, 10)}
+        {cell(8, 10)}
+      </div>
+    );
+  }
+  if (layout === "grid-2") {
+    return (
+      <div className="flex gap-0.5 mr-2">
+        <div className="flex flex-col gap-0.5">
+          {cell(8, 8)}
+          {cell(8, 8)}
+        </div>
+        <div className="flex flex-col gap-0.5">
+          {cell(8, 8)}
+          {cell(8, 8)}
+        </div>
+      </div>
+    );
+  }
+  if (layout === "grid-3") {
+    return (
+      <div className="flex gap-0.5 mr-2">
+        {cell(5, 10)}
+        {cell(5, 10)}
+        {cell(5, 10)}
+      </div>
+    );
+  }
+  return (
+    <div className="flex gap-0.5 mr-2">
+      {cell(4, 10)}
+      {cell(4, 10)}
+      {cell(4, 10)}
+      {cell(4, 10)}
+    </div>
+  );
+}
+
+function AspectRatioBadge({ width, height }: { width: number; height: number }) {
+  const ratio = width / height;
+  let label: string;
+  if (Math.abs(ratio - 1) < 0.05) {
+    label = "1:1";
+  } else if (ratio > 1.4) {
+    label = `${width}:${height}`;
+  } else if (ratio < 0.7) {
+    label = `${height}:${width}`;
+  } else {
+    label = `${width}:${height}`;
+  }
+  return (
+    <span className="absolute bottom-1 right-1 text-[8px] font-medium text-white bg-black/60 rounded px-0.5 leading-tight">
+      {label}
+    </span>
+  );
+}
+
 export function ImageCombinerTool() {
   const [images, setImages] = useState<ImageEntry[]>([]);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
@@ -55,6 +149,13 @@ export function ImageCombinerTool() {
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
 
+  // Batch selection state (#2)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const lastClickedIdRef = useRef<string | null>(null);
+
+  // Undo history (#7)
+  const historyRef = useRef<ImageEntry[][]>([]);
+
   // Preview canvas ref
   const previewCanvasRef = useRef<HTMLCanvasElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -70,6 +171,59 @@ export function ImageCombinerTool() {
       imageUrlRefs.current.clear();
     };
   }, []);
+
+  // ── Keyboard shortcuts (#7) ──────────────────────────────────────────────────
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const isMac = navigator.platform.toUpperCase().indexOf("MAC") >= 0;
+      const mod = isMac ? e.metaKey : e.ctrlKey;
+
+      // Escape — clear selection
+      if (e.key === "Escape" && selectedIds.size > 0) {
+        setSelectedIds(new Set());
+        lastClickedIdRef.current = null;
+        return;
+      }
+
+      // Ctrl+A / Cmd+A — select all
+      if (mod && e.key === "a" && images.length > 0) {
+        e.preventDefault();
+        setSelectedIds(new Set(images.map((img) => img.id)));
+        return;
+      }
+
+      // Delete / Backspace — delete selected or currently selected images
+      if ((e.key === "Delete" || e.key === "Backspace") && selectedIds.size > 0) {
+        e.preventDefault();
+        const toDelete = Array.from(selectedIds);
+        toDelete.forEach((id) => {
+          const url = imageUrlRefs.current.get(id);
+          if (url) {
+            URL.revokeObjectURL(url);
+            imageUrlRefs.current.delete(id);
+          }
+        });
+        setImages((prev) => prev.filter((img) => !selectedIds.has(img.id)));
+        setSelectedIds(new Set());
+        lastClickedIdRef.current = null;
+        return;
+      }
+
+      // Ctrl+Z — undo last reorder
+      if (mod && e.key === "z" && historyRef.current.length > 0) {
+        e.preventDefault();
+        const prev = historyRef.current.pop()!;
+        setImages(prev);
+        setSelectedIds(new Set());
+        lastClickedIdRef.current = null;
+        return;
+      }
+    };
+
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [selectedIds, images]);
 
   // ── Live Preview ────────────────────────────────────────────────────────────
 
@@ -96,7 +250,6 @@ export function ImageCombinerTool() {
         maxWidth,
       });
 
-      // Scale down for preview — fit within 600px wide canvas
       const scale = Math.min(1, 600 / result.width);
       canvas.width = Math.round(result.width * scale);
       canvas.height = Math.round(result.height * scale);
@@ -205,6 +358,58 @@ export function ImageCombinerTool() {
       imageUrlRefs.current.delete(id);
     }
     setImages((prev) => prev.filter((img) => img.id !== id));
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+  };
+
+  // ── Batch selection (#2) ────────────────────────────────────────────────────
+
+  const handleThumbnailClick = (e: React.MouseEvent, id: string) => {
+    if (e.shiftKey && lastClickedIdRef.current !== null) {
+      // Range select
+      const ids = images.map((img) => img.id);
+      const fromIdx = ids.indexOf(lastClickedIdRef.current);
+      const toIdx = ids.indexOf(id);
+      if (fromIdx !== -1 && toIdx !== -1) {
+        const [start, end] = fromIdx < toIdx ? [fromIdx, toIdx] : [toIdx, fromIdx];
+        const range = ids.slice(start, end + 1);
+        setSelectedIds((prev) => {
+          const next = new Set(prev);
+          range.forEach((rid) => next.add(rid));
+          return next;
+        });
+        lastClickedIdRef.current = id;
+        return;
+      }
+    }
+
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+    lastClickedIdRef.current = id;
+  };
+
+  const handleBulkDelete = () => {
+    if (selectedIds.size === 0) return;
+    selectedIds.forEach((id) => {
+      const url = imageUrlRefs.current.get(id);
+      if (url) {
+        URL.revokeObjectURL(url);
+        imageUrlRefs.current.delete(id);
+      }
+    });
+    setImages((prev) => prev.filter((img) => !selectedIds.has(img.id)));
+    setSelectedIds(new Set());
+    lastClickedIdRef.current = null;
   };
 
   // ── Drag-to-reorder ────────────────────────────────────────────────────────
@@ -229,10 +434,11 @@ export function ImageCombinerTool() {
       const fromIdx = arr.findIndex((img) => img.id === draggedId);
       const toIdx = arr.findIndex((img) => img.id === targetId);
       if (fromIdx === -1 || toIdx === -1) return prev;
-      // Adjust toIdx: when dragging forward, the removed item shifts indices left
       const adjustedToIdx = fromIdx < toIdx ? toIdx - 1 : toIdx;
       const [item] = arr.splice(fromIdx, 1);
       arr.splice(adjustedToIdx, 0, item);
+      // Save snapshot for undo
+      historyRef.current.push([...arr]);
       return arr;
     });
   };
@@ -268,10 +474,11 @@ export function ImageCombinerTool() {
       });
 
       const ext = outputFormat === "jpeg" ? "jpg" : outputFormat;
+      const filename = `combined-${images.length}x${layoutMode}-${new Date().toISOString().slice(0, 10)}.${ext}`;
 
       const a = document.createElement("a");
       a.href = URL.createObjectURL(result.blob);
-      a.download = `combined-${Date.now()}.${ext}`;
+      a.download = filename;
       a.click();
       URL.revokeObjectURL(a.href);
 
@@ -286,6 +493,29 @@ export function ImageCombinerTool() {
     }
   };
 
+  // ── Presets (#10) ───────────────────────────────────────────────────────────
+
+  const applyPreset = (preset: Preset) => {
+    setLayoutMode(preset.layout);
+    setSizingMode(preset.sizing);
+    setGap(preset.gap);
+    setOuterPadding(preset.outerPadding);
+    setBgMode(preset.bgMode);
+    if (preset.maxWidth !== undefined) {
+      setMaxWidth(preset.maxWidth);
+    }
+  };
+
+  const activePreset = PRESETS.find(
+    (p) =>
+      p.layout === layoutMode &&
+      p.sizing === sizingMode &&
+      p.gap === gap &&
+      p.outerPadding === outerPadding &&
+      p.bgMode === bgMode &&
+      (p.maxWidth ?? 800) === maxWidth
+  );
+
   const bgColor = bgMode === "transparent" ? "transparent"
     : bgMode === "custom" ? customBg : "#ffffff";
 
@@ -295,9 +525,6 @@ export function ImageCombinerTool() {
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Upload Images</CardTitle>
-          <CardDescription className="text-xs">
-            Drag and drop or browse — up to {MAX_IMAGES} images (max 20MB each)
-          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           {/* Dropzone */}
@@ -336,55 +563,85 @@ export function ImageCombinerTool() {
           {images.length > 0 && (
             <>
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-                {images.map((img) => (
-                  <div
-                    key={img.id}
-                    draggable
-                    onDragStart={(e) => handleDragStart(e, img.id)}
-                    onDragOver={(e) => handleDragOver(e, img.id)}
-                    onDrop={(e) => handleDropOn(e, img.id)}
-                    onDragEnd={handleDragEnd}
-                    className={`group relative rounded-md border bg-background overflow-hidden transition-all ${
-                      dragOverId === img.id ? "ring-2 ring-primary" : "border-border"
-                    } ${draggedId === img.id ? "opacity-40" : "opacity-100"}`}
-                  >
-                    {/* Grip handle */}
-                    <div className="absolute top-1 left-1 z-10 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <GripVertical className="h-3.5 w-3.5 text-white drop-shadow-sm" />
-                    </div>
-
-                    {/* Delete button */}
-                    <button
-                      onClick={() => handleDelete(img.id)}
-                      className="absolute top-1 right-1 z-10 rounded-full bg-black/60 hover:bg-black/80 p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
-                      aria-label={`Remove ${img.name}`}
+                {images.map((img, idx) => {
+                  const isSelected = selectedIds.has(img.id);
+                  return (
+                    <div
+                      key={img.id}
+                      draggable
+                      onDragStart={(e) => handleDragStart(e, img.id)}
+                      onDragOver={(e) => handleDragOver(e, img.id)}
+                      onDrop={(e) => handleDropOn(e, img.id)}
+                      onDragEnd={handleDragEnd}
+                      onClick={(e) => handleThumbnailClick(e, img.id)}
+                      className={`group relative rounded-md border bg-background overflow-hidden transition-all cursor-pointer ${
+                        dragOverId === img.id ? "ring-2 ring-primary" : "border-border"
+                      } ${draggedId === img.id ? "opacity-40" : "opacity-100"} ${
+                        isSelected ? "ring-2 ring-primary border-primary" : ""
+                      }`}
                     >
-                      <X className="h-3 w-3 text-white" />
-                    </button>
+                      {/* Order badge (#3) */}
+                      <div className="absolute top-1 left-1 z-10 flex items-center justify-center w-5 h-5 rounded-full bg-black/70 text-white text-[9px] font-semibold pointer-events-none">
+                        {idx + 1}
+                      </div>
 
-                    {/* Thumbnail */}
-                    <img
-                      src={img.url}
-                      alt={img.name}
-                      className="w-full aspect-square object-cover"
-                    />
+                      {/* Grip handle (#1 — always visible) */}
+                      <div className="absolute top-1 right-1 z-10 p-1 text-white/80 hover:text-white cursor-grab active:cursor-grabbing">
+                        <GripVertical className="h-3.5 w-3.5 drop-shadow-sm" />
+                      </div>
 
-                    {/* Filename */}
-                    <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent px-1.5 py-1">
-                      <p className="text-[10px] text-white truncate leading-tight">
-                        {img.name}
-                      </p>
+                      {/* Delete button */}
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleDelete(img.id); }}
+                        className="absolute top-1 left-6 z-10 rounded-full bg-black/60 hover:bg-black/80 p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                        aria-label={`Remove ${img.name}`}
+                      >
+                        <X className="h-3 w-3 text-white" />
+                      </button>
+
+                      {/* Thumbnail */}
+                      <img
+                        src={img.url}
+                        alt={img.name}
+                        className="w-full aspect-square object-cover"
+                        title={`${img.width}×${img.height} · ${formatFileSize(img.file.size)}`}
+                      />
+
+                      {/* Filename + info overlay (#5) */}
+                      <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent px-1.5 py-1.5">
+                        <p className="text-[10px] text-white truncate leading-tight">{img.name}</p>
+                        <p className="text-[9px] text-white/60 leading-tight">
+                          {img.width}×{img.height} · {formatFileSize(img.file.size)}
+                        </p>
+                      </div>
+
+                      {/* Aspect ratio badge (#4) */}
+                      <AspectRatioBadge width={img.width} height={img.height} />
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
 
               {/* Add more / Clear All */}
               <div className="flex justify-between items-center">
                 <p className="text-xs text-muted-foreground">
                   {images.length} / {MAX_IMAGES} images
+                  {selectedIds.size > 0 && (
+                    <span className="ml-2 text-primary font-medium">({selectedIds.size} selected)</span>
+                  )}
                 </p>
                 <div className="flex gap-2">
+                  {selectedIds.size > 0 && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleBulkDelete}
+                      className="text-destructive hover:text-destructive"
+                    >
+                      <Trash2 className="h-3.5 w-3.5 mr-1" />
+                      Delete selected ({selectedIds.size})
+                    </Button>
+                  )}
                   {images.length > 0 && (
                     <Button
                       variant="ghost"
@@ -393,6 +650,10 @@ export function ImageCombinerTool() {
                         imageUrlRefs.current.forEach((url) => URL.revokeObjectURL(url));
                         imageUrlRefs.current.clear();
                         setImages([]);
+                        setSelectedIds(new Set());
+                        lastClickedIdRef.current = null;
+                        historyRef.current = [];
+                        toast({ title: "Cleared", description: "All images removed." });
                       }}
                     >
                       Clear all
@@ -428,8 +689,24 @@ export function ImageCombinerTool() {
           <CardTitle className="text-base">Layout Settings</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
+          {/* Presets bar (#10) */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-xs text-muted-foreground">Presets:</span>
+            {PRESETS.map((preset) => (
+              <Button
+                key={preset.label}
+                variant={activePreset?.label === preset.label ? "secondary" : "outline"}
+                size="sm"
+                onClick={() => applyPreset(preset)}
+                className="h-7 text-xs"
+              >
+                {preset.label}
+              </Button>
+            ))}
+          </div>
+
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {/* Layout Mode */}
+            {/* Layout Mode (#8) */}
             <div className="space-y-1.5">
               <Label className="text-xs text-muted-foreground">Layout</Label>
               <Select value={layoutMode} onValueChange={(v) => setLayoutMode(v as LayoutMode)}>
@@ -437,11 +714,26 @@ export function ImageCombinerTool() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="horizontal">Horizontal</SelectItem>
-                  <SelectItem value="vertical">Vertical</SelectItem>
-                  <SelectItem value="grid-2">Grid 2-col</SelectItem>
-                  <SelectItem value="grid-3">Grid 3-col</SelectItem>
-                  <SelectItem value="grid-4">Grid 4-col</SelectItem>
+                  <SelectItem value="horizontal">
+                    <LayoutPreviewSvg layout="horizontal" />
+                    <span>Horizontal</span>
+                  </SelectItem>
+                  <SelectItem value="vertical">
+                    <LayoutPreviewSvg layout="vertical" />
+                    <span>Vertical</span>
+                  </SelectItem>
+                  <SelectItem value="grid-2">
+                    <LayoutPreviewSvg layout="grid-2" />
+                    <span>Grid 2-col</span>
+                  </SelectItem>
+                  <SelectItem value="grid-3">
+                    <LayoutPreviewSvg layout="grid-3" />
+                    <span>Grid 3-col</span>
+                  </SelectItem>
+                  <SelectItem value="grid-4">
+                    <LayoutPreviewSvg layout="grid-4" />
+                    <span>Grid 4-col</span>
+                  </SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -500,7 +792,7 @@ export function ImageCombinerTool() {
       {/* ── Output Card ── */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Background & Output</CardTitle>
+          <CardTitle className="text-base">Background &amp; Output</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -573,7 +865,6 @@ export function ImageCombinerTool() {
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Preview</CardTitle>
-          <CardDescription className="text-xs">Live preview (scaled to fit)</CardDescription>
         </CardHeader>
         <CardContent>
           {images.length === 0 ? (
