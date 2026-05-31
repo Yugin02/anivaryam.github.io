@@ -1,9 +1,8 @@
-import { useState, useEffect } from "react";
 import { Layout } from "@/components/layout/Layout";
 import { SEO } from "@/components/SEO";
 import { ImageCombinerTool } from "@/components/tools/ImageCombinerTool";
 import { UpdateNotification } from "@/components/UpdateNotification";
-import { Combine, Home, ChevronUp } from "lucide-react";
+import { Combine, Home } from "lucide-react";
 import { Link } from "react-router-dom";
 import {
   Breadcrumb,
@@ -13,28 +12,6 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
-
-function ScrollToTop() {
-  const [visible, setVisible] = useState(false);
-
-  useEffect(() => {
-    const onScroll = () => setVisible(window.scrollY > 300);
-    window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
-  }, []);
-
-  if (!visible) return null;
-
-  return (
-    <button
-      onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
-      className="fixed bottom-6 right-6 z-50 rounded-full bg-primary text-primary-foreground shadow-lg p-3 hover:bg-primary/90 transition-opacity"
-      aria-label="Scroll to top"
-    >
-      <ChevronUp className="h-5 w-5" />
-    </button>
-  );
-}
 
 export default function ImageCombinerPage() {
   return (
@@ -59,7 +36,6 @@ export default function ImageCombinerPage() {
         }}
       />
       <div className="container mx-auto px-4 py-12">
-        <ScrollToTop />
         <UpdateNotification />
 
         <Breadcrumb className="mb-8">
