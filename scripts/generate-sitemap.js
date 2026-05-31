@@ -200,10 +200,17 @@ const sitemap = `<?xml version="1.0" encoding="UTF-8"?>
   </url>
   
   <url>
-    <loc>${baseUrl}/tools/regex-tester</loc>
+    <loc>${baseUrl}/tools/image-resizer</loc>
     <lastmod>${today}</lastmod>
     <changefreq>monthly</changefreq>
-    <priority>0.8</priority>
+    <priority>0.9</priority>
+  </url>
+  
+  <url>
+    <loc>${baseUrl}/tools/image-combiner</loc>
+    <lastmod>${today}</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.9</priority>
   </url>
   
   <url>
