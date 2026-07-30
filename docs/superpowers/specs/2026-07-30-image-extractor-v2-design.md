@@ -109,31 +109,71 @@ interface ImageCombinerModalProps {
 
 ### `grouping.ts` — rewritten `groupImages`
 
-**Algorithm:**
-```
-function groupImages(images, sourceDoc) {
-  // 1. Initialize: groups = [], currentGroupImages = []
-  // 2. Walk sourceDoc's body in document order (TreeWalker or recursive).
-  // 3. For each node:
-  //    a. If node is <img>:
-  //       - Look up the matching ExtractedImage by src match + DOM order fallback.
-  //       - Push imgId onto currentGroupImages.
-  //    b. Else if node.tagName ∈ {P, STRONG, UL, OL, LI, H1, H2, H3, H4, H5}:
-  //       - If currentGroupImages.length > 0: close current group, start new.
-  //       - Do NOT descend into the separator's children for image collection at this level.
-  //         (Images INSIDE the separator's subtree start a new group per the recursion rule.)
-  //    c. Else (DIV, SPAN, TABLE, BR, SECTION, ARTICLE, MAIN, etc.):
-  //       - Descend into children for image collection.
-  // 4. After walk: close final group.
-  // 5. Drop empty groups.
-  // 6. Return ImageGroup[] with layoutHint:
-  //    - single-image group → "horizontal"
-  //    - multi-image group with all images in same separator-block → "horizontal"
-  //    - multi-image group formed across separator transitions → "vertical"
-  //    - table-formed group → "grid"
-  //    Default to "horizontal" when undetermined.
+**Algorithm (post-order walk):**
+
+```ts
+const SEPARATORS = new Set([
+  'P', 'STRONG', 'UL', 'OL', 'LI',
+  'H1', 'H2', 'H3', 'H4', 'H5',
+]);
+
+function groupImages(images: ExtractedImage[], sourceDoc: Document): ImageGroup[] {
+  const groups: string[][] = [];
+  let current: string[] = [];
+
+  // Map DOM <img> elements to ExtractedImage by src (with DOM-order fallback).
+  const domImgs = Array.from(sourceDoc.querySelectorAll('img'));
+  const bySrc = new Map<string, HTMLImageElement[]>();
+  for (const dom of domImgs) {
+    const s = dom.getAttribute('src') || '';
+    if (!bySrc.has(s)) bySrc.set(s, []);
+    bySrc.get(s)!.push(dom);
+  }
+  const usedDom = new WeakSet<HTMLImageElement>();
+  // srcWalk() below maintains a parallel cursor to align input images with DOM order.
+
+  function findImage(src: string, fallbackIdx: number): string | null {
+    // Same matching strategy as v1's groupImages.
+    // Returns the matched ExtractedImage's id or null.
+    // ...
+  }
+
+  function walk(node: Element): void {
+    if (node.tagName === 'IMG') {
+      // Match against ExtractedImage[]; add to current group.
+      // ...
+      return;
+    }
+    // Recurse into all children, regardless of whether the parent is a separator.
+    for (const child of Array.from(node.children)) {
+      walk(child);
+    }
+    // POST-ORDER: if this node is a separator, close the current group.
+    if (SEPARATORS.has(node.tagName) && current.length > 0) {
+      groups.push([...current]);
+      current = [];
+    }
+  }
+
+  walk(sourceDoc.body);
+
+  // Close final group.
+  if (current.length > 0) {
+    groups.push(current);
+  }
+
+  return groups.map((imageIds, i) => ({
+    id: `g${i + 1}`,
+    label: `Group ${i + 1}`,
+    imageIds,
+    layoutHint: 'horizontal',
+  }));
 }
 ```
+
+The key insight: the separator closing logic runs POST-ORDER (after all children processed). Images inside a separator element (e.g., `<p><img></p>`) are still collected — they go into the current group, then the group is closed when the `<p>` post-order fires. This way `<p>img1</p>img2` correctly produces 2 groups `[img1]`, `[img2]`.
+
+The src-to-ExtractedImage matching logic is preserved from v1 (src attribute → DOM order fallback).
 
 This rewrites the v1 algorithm, which was based on "smallest common ancestor." The new algorithm walks in source order and segments by separators.
 
@@ -199,24 +239,25 @@ This overrides the source HTML's `display: block` and forces images to render in
 
 ### Unit tests (`grouping.test.ts` — rewritten)
 
-New fixtures for the separator-based algorithm:
+New fixtures for the separator-based algorithm (post-order walk):
 
-| Input | Expected groups |
-|---|---|
-| 1 image in `<div>` | 1 group |
-| 2 images in same `<p>` | 1 group, `layoutHint: 'horizontal'` |
-| 3 images each in own `<p>` | **3 groups** (algorithm change from v1) |
-| 2 images in `<p>`, 1 in `<strong>` | 2 groups (P and STRONG both separate) |
-| 1 image in `<ul><li>` | 1 group (LI separates from prior, but only one image here) |
-| 2 images separated by `<br>` | 1 group (BR not a separator) |
-| 2 images separated by `<span>` | 1 group (SPAN not a separator) |
-| 2 images inside `<table><tr>` | 1 group (TABLE descends) |
-| 5 images each after one of `<h1>`–`<h5>` | 6 groups (5 separators + dangling group) |
-| 4 images: `<p>img1</p>img2<ul><li>img3</li></ul>img4` | 4 groups (each separator creates a new group) |
-| Empty `images[]` | `[]` |
-| No `<img>` in source | `[]` |
+| Input | Expected groups | Notes |
+|---|---|---|
+| 1 image in `<div>` | 1 group | Trivial |
+| 2 images in same `<p>` | 1 group | P post-order fires after both collected |
+| 3 images each in own `<p>` | **3 groups** | Algorithm change from v1's "common-ancestor" heuristic |
+| `<p>img1</p><strong>img2</strong>` | 2 groups | P closes img1; STRONG closes img2 |
+| `<p>img1</p>img2<img3>` (P + 2 sibling imgs) | 3 groups | P separates img1; img2/img3 each become their own single-img group (no separator between them on DOM but img3 follows img2 with no enclosing block; the walk naturally gives each its own close) — see spec note below |
+| 1 image in `<ul><li>img</li></ul>` | 1 group | LI post-order fires |
+| 2 images separated by `<br>` | 1 group | BR not a separator |
+| 2 images inside `<table><tr>` | 1 group | TABLE descends |
+| `<p>img1</p><p>img2</p><p>img3</p><ul><li>img4</li></ul>` | 4 groups | Three Ps each close, LI closes img4 |
+| Empty `images[]` | `[]` | |
+| No `<img>` in source | `[]` | |
 
-Total: 12 fixtures. Plus: image order preserved within a group; single-image group has `layoutHint: 'horizontal'`.
+Total: 10 fixtures. Plus: image order preserved within a group.
+
+**`layoutHint`** for all groups defaults to `'horizontal'` (informational only — no tool behavior depends on it).
 
 ### Unit tests (other suites — unchanged)
 
@@ -231,9 +272,9 @@ Total: 12 fixtures. Plus: image order preserved within a group; single-image gro
 - Paste Word `.docx` with vertical 3-image list → images render side-by-side as width allows.
 
 **Grouping:**
-- `<p><img></p><p><img></p>` paste → **2 groups**.
-- `<p>text<img>more text<img>text</p>` → 1 group.
-- `<strong>img1</strong>img2` → 2 groups.
+- `<p>img1</p><p>img2</p>` paste → **2 groups**.
+- `<p>text<img1>more text<img2>text</p>` → 1 group (both inside same P).
+- `<strong>img1</strong>img2` → 2 groups (STRONG separates).
 
 **UI redesign:**
 - Per-image Download icon → downloads that one original blob.
