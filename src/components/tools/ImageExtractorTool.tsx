@@ -19,15 +19,25 @@ export function ImageExtractorTool() {
   const [combineOpenGroupId, setCombineOpenGroupId] = useState<string | null>(null);
   const draggedImageId = useRef<string | null>(null);
 
-  // Paste handler: passthrough, then read innerHTML (preserved from v1).
+  // Read clipboardData synchronously — innerHTML misses images when the browser inserts in phases.
   useEffect(() => {
     const el = inputAreaRef.current;
     if (!el) return;
-    const onPaste = () => {
-      setTimeout(() => {
-        const content = el.innerHTML;
-        if (content.trim()) setInputHtml(content);
-      }, 10);
+    const onPaste = (e: ClipboardEvent) => {
+      const target = e.currentTarget as HTMLDivElement;
+      const html = e.clipboardData?.getData("text/html");
+      if (html) {
+        e.preventDefault();
+        target.innerHTML = html;
+        setInputHtml(target.innerHTML);
+        return;
+      }
+      const text = e.clipboardData?.getData("text/plain");
+      if (text) {
+        e.preventDefault();
+        target.innerHTML = text;
+        setInputHtml(target.innerHTML);
+      }
     };
     const onInput = () => setInputHtml(el.innerHTML);
     el.addEventListener("paste", onPaste);
