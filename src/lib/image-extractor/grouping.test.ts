@@ -2,13 +2,13 @@ import { describe, it, expect } from "vitest";
 import { groupImages } from "./grouping";
 import type { ExtractedImage } from "./extractor";
 
-function makeImg(id: string): ExtractedImage {
+function makeImg(id: string, src = `data:image/png;base64,${id}`): ExtractedImage {
   return {
     id,
-    src: `data:image/png;base64,${id}`,
+    src,
     alt: id,
-    width: 100,
-    height: 100,
+    width: 10,
+    height: 10,
     blob: null,
     filename: `${id}.png`,
   };
@@ -18,57 +18,82 @@ function parse(html: string): Document {
   return new DOMParser().parseFromString(html, "text/html");
 }
 
-describe("groupImages", () => {
-  it("groups 4 images in a single <table> into 1 grid group", () => {
-    const html =
-      "<table><tr><td><img src='a'/></td><td><img src='b'/></td><td><img src='c'/></td><td><img src='d'/></td></tr></table>";
-    const imgs = ["a", "b", "c", "d"].map(makeImg);
-    const groups = groupImages(imgs, parse(html));
-    expect(groups.length).toBe(1);
-    expect(groups[0]!.layoutHint).toBe("grid");
-    expect(groups[0]!.imageIds.length).toBe(4);
+describe("groupImages (separator algorithm)", () => {
+  it("returns [] for empty images", () => {
+    expect(groupImages([], parse("<p><img src='a'/></p>"))).toEqual([]);
   });
 
-  it("groups 3 inline images in one <p> as horizontal", () => {
-    const html = "<p><img src='a'/><img src='b'/><img src='c'/></p>";
-    const imgs = ["a", "b", "c"].map(makeImg);
-    const groups = groupImages(imgs, parse(html));
-    expect(groups.length).toBe(1);
-    expect(groups[0]!.layoutHint).toBe("horizontal");
+  it("returns [] when no <img> in source", () => {
+    expect(groupImages([makeImg("a")], parse("<p>no images here</p>"))).toEqual([]);
   });
 
-  it("groups 3 separate <p> siblings with single images as vertical", () => {
-    const html =
-      "<div><p><img src='a'/></p><p><img src='b'/></p><p><img src='c'/></p></div>";
-    const imgs = ["a", "b", "c"].map(makeImg);
-    const groups = groupImages(imgs, parse(html));
-    expect(groups.length).toBe(1);
-    expect(groups[0]!.layoutHint).toBe("vertical");
+  it("1 image in <div> → 1 group", () => {
+    const result = groupImages([makeImg("a")], parse("<div><img src='a'/></div>"));
+    expect(result).toHaveLength(1);
+    expect(result[0]!.imageIds).toEqual(["a"]);
   });
 
-  it("creates 2 groups when 2 images are in a table + 1 in a separate <p>", () => {
-    const html =
-      "<table><tr><td><img src='a'/></td><td><img src='b'/></td></tr></table><p><img src='c'/></p>";
-    const imgs = ["a", "b", "c"].map(makeImg);
-    const groups = groupImages(imgs, parse(html));
-    expect(groups.length).toBe(2);
-    const gridGroup = groups.find((g) => g.layoutHint === "grid")!;
-    const verticalGroup = groups.find((g) => g.layoutHint !== "grid")!;
-    expect(gridGroup.imageIds.length).toBe(2);
-    expect(verticalGroup.imageIds.length).toBe(1);
-    expect(verticalGroup.imageIds[0]).toBe("c");
+  it("2 images in same <p> → 1 group", () => {
+    const result = groupImages(
+      [makeImg("a"), makeImg("b")],
+      parse("<p><img src='a'/><img src='b'/></p>"),
+    );
+    expect(result).toHaveLength(1);
+    expect(result[0]!.imageIds).toEqual(["a", "b"]);
   });
 
-  it("preserves the order of images within a group", () => {
-    const html =
-      "<table><tr><td><img src='a'/></td><td><img src='b'/></td><td><img src='c'/></td></tr></table>";
-    const imgs = ["a", "b", "c"].map(makeImg);
-    const groups = groupImages(imgs, parse(html));
-    expect(groups[0]!.imageIds).toEqual(["a", "b", "c"]);
+  it("3 images each in own <p> → 3 groups", () => {
+    const result = groupImages(
+      [makeImg("a"), makeImg("b"), makeImg("c")],
+      parse("<p><img src='a'/></p><p><img src='b'/></p><p><img src='c'/></p>"),
+    );
+    expect(result).toHaveLength(3);
+    expect(result.map((g) => g.imageIds)).toEqual([["a"], ["b"], ["c"]]);
   });
 
-  it("returns empty array if no images", () => {
-    const groups = groupImages([], parse("<p>no images</p>"));
-    expect(groups).toEqual([]);
+  it("<p>img1</p><strong>img2</strong> → 2 groups", () => {
+    const result = groupImages(
+      [makeImg("a"), makeImg("b")],
+      parse("<p><img src='a'/></p><strong><img src='b'/></strong>"),
+    );
+    expect(result).toHaveLength(2);
+    expect(result[0]!.imageIds).toEqual(["a"]);
+    expect(result[1]!.imageIds).toEqual(["b"]);
+  });
+
+  it("2 images separated by <br> → 1 group (BR is not a separator)", () => {
+    const result = groupImages(
+      [makeImg("a"), makeImg("b")],
+      parse("<br><img src='a'/><br><img src='b'/><br>"),
+    );
+    expect(result).toHaveLength(1);
+    expect(result[0]!.imageIds).toEqual(["a", "b"]);
+  });
+
+  it("2 images inside <table> → 1 group (TABLE descends)", () => {
+    const result = groupImages(
+      [makeImg("a"), makeImg("b")],
+      parse("<table><tr><td><img src='a'/></td><td><img src='b'/></td></tr></table>"),
+    );
+    expect(result).toHaveLength(1);
+    expect(result[0]!.imageIds).toEqual(["a", "b"]);
+  });
+
+  it("<p>img1</p><p>img2</p><p>img3</p><ul><li>img4</li></ul> → 4 groups", () => {
+    const result = groupImages(
+      [makeImg("a"), makeImg("b"), makeImg("c"), makeImg("d")],
+      parse(
+        "<p><img src='a'/></p><p><img src='b'/></p><p><img src='c'/></p><ul><li><img src='d'/></li></ul>",
+      ),
+    );
+    expect(result).toHaveLength(4);
+  });
+
+  it("preserves image order within a group", () => {
+    const result = groupImages(
+      [makeImg("a"), makeImg("b"), makeImg("c")],
+      parse("<p><img src='a'/><img src='b'/></p><p><img src='c'/></p>"),
+    );
+    expect(result[0]!.imageIds).toEqual(["a", "b"]);
   });
 });
