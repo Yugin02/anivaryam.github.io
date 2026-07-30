@@ -171,14 +171,14 @@ export function ImageCombinerTool({ initialFiles }: ImageCombinerToolProps = {})
   const [isProcessing, setIsProcessing] = useState(false);
 
   // Settings
-  const [layoutMode, setLayoutMode] = useState<LayoutMode>("grid-2");
+  const [layoutMode, setLayoutMode] = useState<LayoutMode>("horizontal");
   const [sizingMode, setSizingMode] = useState<SizingMode>("fit-to-row");
   const [maxWidth, setMaxWidth] = useState(800);
-  const [gap, setGap] = useState(8);
-  const [outerPadding, setOuterPadding] = useState(16);
+  const [gap, setGap] = useState(15);
+  const [outerPadding, setOuterPadding] = useState(0);
 
   // Output
-  const [bgMode, setBgMode] = useState<BgMode>("white");
+  const [bgMode, setBgMode] = useState<BgMode>("transparent");
   const [customBg, setCustomBg] = useState("#ffffff");
   const [outputFormat, setOutputFormat] = useState<OutputFormat>("png");
   const [quality, setQuality] = useState(85);
