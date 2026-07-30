@@ -140,25 +140,33 @@ export function ImageExtractorTool() {
 
   const splitSelected = (sourceGroupId: string) => {
     const source = groups.find((g) => g.id === sourceGroupId);
-    if (!source) return;
+    if (!source) {
+      toast({ title: "Split failed", description: "Source group not found.", variant: "destructive" });
+      return;
+    }
     const toSplit = source.imageIds.filter((id) => selectedIds.has(id));
-    if (toSplit.length === 0) return;
+    if (toSplit.length === 0) {
+      toast({ title: "Split failed", description: "No selected images in this group.", variant: "destructive" });
+      return;
+    }
+    const remaining = source.imageIds.filter((id) => !toSplit.includes(id));
     const newGroup: ImageGroup = {
-      id: `g${Math.max(...groups.map((g) => Number(g.id.slice(1)) || 0), 0) + 1}`,
+      id: `g${Date.now()}`,
       label: `Group ${groups.length + 1}`,
       imageIds: toSplit,
       layoutHint: "horizontal",
     };
     setGroups((prev) => {
-      const updated = prev.flatMap((g) => {
-        if (g.id !== sourceGroupId) return [g];
-        const remaining = g.imageIds.filter((id) => !toSplit.includes(id));
-        if (remaining.length === 0) return [];
-        return [{ ...g, imageIds: remaining }];
-      });
+      const updated = prev
+        .map((g) => (g.id === sourceGroupId ? { ...g, imageIds: remaining } : g))
+        .filter((g) => g.imageIds.length > 0);
       return [...updated, newGroup];
     });
     setSelectedIds(new Set());
+    toast({
+      title: `Split into ${newGroup.label}`,
+      description: `${toSplit.length} image(s) moved.`,
+    });
   };
 
   const mergeInto = (sourceGroupId: string, targetGroupId: string) => {
@@ -201,8 +209,14 @@ export function ImageExtractorTool() {
             ref={inputAreaRef}
             contentEditable
             data-placeholder="Paste content from Google Docs / Word here..."
-            className="flex-1 min-h-[300px] max-h-[60vh] p-4 text-sm bg-background border border-border rounded-lg overflow-auto focus:outline-none focus:ring-2 focus:ring-primary/20 input-editable"
+            className="flex-1 min-h-[300px] max-h-[60vh] p-4 text-sm bg-background text-foreground border border-border rounded-lg overflow-auto focus:outline-none focus:ring-2 focus:ring-primary/20 input-editable"
             style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}
+            onWheel={(e) => {
+              if (e.deltaY !== 0 && e.currentTarget.scrollHeight > e.currentTarget.clientHeight) {
+                e.currentTarget.scrollTop += e.deltaY;
+                e.stopPropagation();
+              }
+            }}
           />
           {loading && (
             <p className="mt-2 text-xs text-muted-foreground">Extracting images…</p>
@@ -238,14 +252,16 @@ export function ImageExtractorTool() {
                       {g.label} · <span className="text-muted-foreground">{g.layoutHint}</span>
                     </span>
                     <div className="flex items-center gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setCombineOpenGroupId(g.id)}
-                        className="h-7 px-2 text-xs"
-                      >
-                        Image Combiner
-                      </Button>
+                        {g.imageIds.length > 1 && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setCombineOpenGroupId(g.id)}
+                            className="h-7 px-2 text-xs"
+                          >
+                            Image Combiner
+                          </Button>
+                        )}
                       {gIdx > 0 && (
                         <Button
                           variant="ghost"

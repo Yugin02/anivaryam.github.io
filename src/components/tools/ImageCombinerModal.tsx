@@ -55,7 +55,15 @@ export function ImageCombinerModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
+      <DialogContent
+        className="max-w-5xl max-h-[90vh] overflow-y-auto"
+        onWheel={(e) => {
+          if (e.deltaY !== 0 && e.currentTarget.scrollHeight > e.currentTarget.clientHeight) {
+            e.currentTarget.scrollTop += e.deltaY;
+            e.stopPropagation();
+          }
+        }}
+      >
         <DialogHeader>
           <DialogTitle>Combine Images</DialogTitle>
           <DialogDescription>
