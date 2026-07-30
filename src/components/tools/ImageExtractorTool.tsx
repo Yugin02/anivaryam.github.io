@@ -208,15 +208,10 @@ export function ImageExtractorTool() {
           <div
             ref={inputAreaRef}
             contentEditable
+            data-lenis-prevent
             data-placeholder="Paste content from Google Docs / Word here..."
             className="flex-1 min-h-[300px] max-h-[60vh] p-4 text-sm bg-background text-foreground border border-border rounded-lg overflow-auto focus:outline-none focus:ring-2 focus:ring-primary/20 input-editable"
             style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}
-            onWheel={(e) => {
-              if (e.deltaY !== 0 && e.currentTarget.scrollHeight > e.currentTarget.clientHeight) {
-                e.currentTarget.scrollTop += e.deltaY;
-                e.stopPropagation();
-              }
-            }}
           />
           {loading && (
             <p className="mt-2 text-xs text-muted-foreground">Extracting images…</p>
@@ -345,8 +340,12 @@ export function ImageExtractorTool() {
         onOpenChange={(o) => { if (!o) setCombineOpenGroupId(null); }}
       />
 
-      {/* Layout fix: pasted images must render inline-by-default. */}
+      {/* Layout fix: pasted images must render inline-by-default; color inherits theme. */}
       <style>{`
+        .input-editable,
+        .input-editable * {
+          color: inherit !important;
+        }
         .input-editable img,
         .input-editable table,
         .input-editable p {
