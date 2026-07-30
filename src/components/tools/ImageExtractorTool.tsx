@@ -19,7 +19,6 @@ export function ImageExtractorTool() {
   const [combineOpenGroupId, setCombineOpenGroupId] = useState<string | null>(null);
   const draggedImageId = useRef<string | null>(null);
 
-  // Read clipboardData synchronously — innerHTML misses images when the browser inserts in phases.
   useEffect(() => {
     const el = inputAreaRef.current;
     if (!el) return;
