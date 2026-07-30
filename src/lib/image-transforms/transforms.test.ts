@@ -17,13 +17,24 @@ const webpSupported = (() => {
   }
 })();
 
+const canvasSupported = (() => {
+  try {
+    const c = document.createElement("canvas");
+    c.width = 1;
+    c.height = 1;
+    return c.getContext("2d") !== null;
+  } catch {
+    return false;
+  }
+})();
+
 beforeAll(async () => {
   const bytes = Uint8Array.from(atob(RED_PNG_BASE64), (c) => c.charCodeAt(0));
   pngBlob = new Blob([bytes], { type: "image/png" });
 });
 
 describe("compressImage", () => {
-  it("returns a Blob", async () => {
+  it.skipIf(!canvasSupported)("returns a Blob", async () => {
     const out = await compressImage(pngBlob, { quality: 50 });
     expect(out).toBeInstanceOf(Blob);
     expect(out.size).toBeGreaterThan(0);
@@ -31,7 +42,7 @@ describe("compressImage", () => {
 });
 
 describe("convertImageFormat", () => {
-  it("converts PNG to JPEG", async () => {
+  it.skipIf(!canvasSupported)("converts PNG to JPEG", async () => {
     const out = await convertImageFormat(pngBlob, { target: "jpeg" });
     expect(out.type).toBe("image/jpeg");
   });
@@ -43,14 +54,14 @@ describe("convertImageFormat", () => {
 });
 
 describe("upscaleImage", () => {
-  it("returns a larger Blob", async () => {
+  it.skipIf(!canvasSupported)("returns a larger Blob", async () => {
     const out = await upscaleImage(pngBlob, { factor: 2 });
     expect(out.size).toBeGreaterThan(0);
   });
 });
 
 describe("stripExif", () => {
-  it("returns a Blob", async () => {
+  it.skipIf(!canvasSupported)("returns a Blob", async () => {
     const out = await stripExif(pngBlob);
     expect(out).toBeInstanceOf(Blob);
   });
@@ -62,7 +73,7 @@ describe("applyTransforms", () => {
     expect(out).toBe(pngBlob);
   });
 
-  it("chains upscale then compress", async () => {
+  it.skipIf(!canvasSupported)("chains upscale then compress", async () => {
     const out = await applyTransforms(pngBlob, {
       upscale: { factor: 1.5 },
       compress: { quality: 80 },
