@@ -160,7 +160,12 @@ function ScrollToTop() {
   );
 }
 
-export function ImageCombinerTool() {
+interface ImageCombinerToolProps {
+  /** Optional pre-population: File objects loaded into the combiner's images list on mount. */
+  initialFiles?: File[];
+}
+
+export function ImageCombinerTool({ initialFiles }: ImageCombinerToolProps = {}) {
   const [images, setImages] = useState<ImageEntry[]>([]);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -365,6 +370,13 @@ export function ImageCombinerTool() {
 
     setImages((prev) => [...prev, ...newEntries]);
   }, [images.length]);
+
+  useEffect(() => {
+    if (initialFiles && initialFiles.length > 0) {
+      loadFiles(initialFiles);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Initial population only — run once on mount.
 
   // ── Handlers ───────────────────────────────────────────────────────────────
 
