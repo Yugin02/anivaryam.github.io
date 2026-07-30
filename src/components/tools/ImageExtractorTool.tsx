@@ -228,7 +228,7 @@ export function ImageExtractorTool() {
             {groups.length} group{groups.length === 1 ? "" : "s"}
           </span>
         </CardHeader>
-        <CardContent className="flex-1 flex flex-col gap-4">
+        <CardContent className="flex-1 flex flex-col gap-4 min-h-[300px] max-h-[60vh] overflow-auto" data-lenis-prevent>
           {groups.length === 0 ? (
             <p className="text-sm text-muted-foreground">
               Paste content with images to see them grouped here.
