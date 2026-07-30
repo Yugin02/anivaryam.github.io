@@ -2,18 +2,18 @@ import { describe, it, expect } from "vitest";
 import { formatImageName, extractImages } from "./extractor";
 
 describe("formatImageName", () => {
-  it("uses alt text when available", () => {
+  it("uses alt text when available with extension appended", () => {
     expect(formatImageName("data:image/png;base64,AAA", "my-photo", 0)).toBe(
-      "my-photo",
+      "my-photo.png",
     );
   });
 
-  it("sanitizes alt text to be filename-safe", () => {
-    expect(formatImageName("x", "my photo /test 1", 5)).toBe("my_photo_test_1");
+  it("sanitizes alt text to be filename-safe with extension appended", () => {
+    expect(formatImageName("x", "my photo /test 1", 5)).toBe("my_photo_test_1.png");
   });
 
-  it("falls back to image-N when alt is empty", () => {
-    expect(formatImageName("x", "", 3)).toBe("image-4");
+  it("falls back to image-N with extension when alt is empty", () => {
+    expect(formatImageName("x", "", 3)).toBe("image-4.png");
   });
 
   it("returns extension inferred from src mime", () => {
@@ -21,7 +21,7 @@ describe("formatImageName", () => {
     expect(name).toMatch(/\.jpg$/);
   });
 
-  it("returns .png for data URIs without explicit mime", () => {
+  it("returns .png for URLs ending in .png", () => {
     const name = formatImageName("https://example.com/x.png", "", 0);
     expect(name).toMatch(/\.png$/);
   });
