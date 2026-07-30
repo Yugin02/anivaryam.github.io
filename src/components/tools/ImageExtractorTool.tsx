@@ -36,7 +36,12 @@ export function ImageExtractorTool() {
         e.preventDefault();
         target.innerHTML = text;
         setInputHtml(target.innerHTML);
+        return;
       }
+      setTimeout(() => {
+        const content = target.innerHTML;
+        if (content.trim()) setInputHtml(content);
+      }, 100);
     };
     const onInput = () => setInputHtml(el.innerHTML);
     el.addEventListener("paste", onPaste);
