@@ -73,13 +73,13 @@ export function ImageExtractorTool() {
     return () => clearTimeout(timer);
   }, [inputHtml, toast]);
 
-  const clearAll = useCallback(() => {
+  const clearAll = () => {
     if (inputAreaRef.current) inputAreaRef.current.innerHTML = "";
     setInputHtml("");
     setImages({});
     setGroups([]);
     setSelectedIds(new Set());
-  }, []);
+  };
 
   // Per-image original download (no transforms).
   const downloadOriginal = (img: ExtractedImage) => {
