@@ -171,14 +171,15 @@ export function ImageExtractorTool() {
     }
     if (!sourceGroupId || sourceGroupId === targetGroupId) return;
     setGroups((prev) =>
-      prev.map((g) => {
+      prev.flatMap((g) => {
         if (g.id === sourceGroupId) {
-          return { ...g, imageIds: g.imageIds.filter((id) => id !== imgId) };
+          const next = { ...g, imageIds: g.imageIds.filter((id) => id !== imgId) };
+          return next.imageIds.length === 0 ? [] : [next];
         }
         if (g.id === targetGroupId) {
-          return { ...g, imageIds: [...g.imageIds, imgId] };
+          return [{ ...g, imageIds: [...g.imageIds, imgId] }];
         }
-        return g;
+        return [g];
       }),
     );
     draggedImageId.current = null;
