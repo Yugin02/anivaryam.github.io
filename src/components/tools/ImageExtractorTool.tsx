@@ -1,52 +1,12 @@
-﻿import { useEffect, useMemo, useRef, useState, useCallback, type ReactNode } from "react";
+﻿import { useEffect, useRef, useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { ChevronDown, Download, GitMerge, X } from "lucide-react";
+import { Download, GitMerge, X } from "lucide-react";
 import { extractImages, downloadImage, type ExtractedImage } from "@/lib/image-extractor/extractor";
 import { groupImages, type ImageGroup, type LayoutHint } from "@/lib/image-extractor/grouping";
-import {
-  applyTransforms,
-  type TargetFormat,
-  type TransformPipeline,
-} from "@/lib/image-transforms/transforms";
 import { ImageCombinerModal } from "./ImageCombinerModal";
-
-interface GroupTransformOptions {
-  compress: { enabled: boolean; quality: number };
-  format: { enabled: boolean; target: TargetFormat };
-  resize: { enabled: boolean; mode: "exact" | "fit" | "fill"; width?: number; height?: number };
-  upscale: { enabled: boolean; factor: 1.5 | 2 | 3 | 4 };
-  stripExif: boolean;
-}
-
-const DEFAULT_GROUP_TRANSFORMS: GroupTransformOptions = {
-  compress: { enabled: false, quality: 80 },
-  format: { enabled: false, target: "png" },
-  resize: { enabled: false, mode: "exact" },
-  upscale: { enabled: false, factor: 2 },
-  stripExif: false,
-};
-
-function rebuildPipeline(t: GroupTransformOptions): TransformPipeline {
-  const p: TransformPipeline = {};
-  if (t.upscale.enabled) p.upscale = { factor: t.upscale.factor };
-  if (t.resize.enabled && t.resize.width && t.resize.height) {
-    p.resize = {
-      mode: t.resize.mode,
-      width: t.resize.width,
-      height: t.resize.height,
-    };
-  }
-  if (t.format.enabled) p.format = { target: t.format.target };
-  if (t.stripExif) p.stripExif = true;
-  if (t.compress.enabled) p.compress = { quality: t.compress.quality };
-  return p;
-}
 
 export function ImageExtractorTool() {
   const { toast } = useToast();
@@ -55,8 +15,6 @@ export function ImageExtractorTool() {
   const [images, setImages] = useState<Record<string, ExtractedImage>>({});
   const [groups, setGroups] = useState<ImageGroup[]>([]);
   const [loading, setLoading] = useState(false);
-  const [groupTransforms, setGroupTransforms] = useState<Record<string, GroupTransformOptions>>({});
-  const [toolsOpen, setToolsOpen] = useState<Record<string, boolean>>({});
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [combineOpenGroupId, setCombineOpenGroupId] = useState<string | null>(null);
   const draggedImageId = useRef<string | null>(null);
@@ -121,63 +79,16 @@ export function ImageExtractorTool() {
     setImages({});
     setGroups([]);
     setSelectedIds(new Set());
-    setGroupTransforms({});
-    setToolsOpen({});
   }, []);
 
-  const getGroupTransforms = (gid: string): GroupTransformOptions =>
-    groupTransforms[gid] ?? DEFAULT_GROUP_TRANSFORMS;
-  const setGroupTransformsFor = (gid: string, t: GroupTransformOptions) =>
-    setGroupTransforms((prev) => ({ ...prev, [gid]: t }));
-
   // Per-image original download (no transforms).
-  const downloadOriginal = useCallback(
-    (img: ExtractedImage) => {
-      if (!img.blob) {
-        toast({ title: "Cannot download", description: img.fetchError ?? "No image data", variant: "destructive" });
-        return;
-      }
-      downloadImage(img.blob, img.filename);
-    },
-    [toast],
-  );
-
-  // Group Download all: apply group's transforms to each image, loop downloads.
-  const downloadGroupAll = useCallback(
-    async (gid: string) => {
-      const group = groups.find((g) => g.id === gid);
-      if (!group) return;
-      const t = getGroupTransforms(gid);
-      const pipeline = rebuildPipeline(t);
-      const hasTransform = Object.keys(pipeline).length > 0;
-      let skipped = 0;
-      let downloaded = 0;
-      for (const imgId of group.imageIds) {
-        const img = images[imgId];
-        if (!img || !img.blob) {
-          skipped++;
-          continue;
-        }
-        try {
-          const out = hasTransform ? await applyTransforms(img.blob, pipeline) : img.blob;
-          downloadImage(out, img.filename);
-          downloaded++;
-        } catch (e) {
-          skipped++;
-          console.error("transform failed for", img.filename, e);
-        }
-      }
-      if (skipped > 0) {
-        toast({
-          title: `${downloaded} downloaded, ${skipped} skipped (fetch/transform failed)`,
-          variant: skipped > downloaded ? "destructive" : "default",
-        });
-      } else if (downloaded > 0) {
-        toast({ title: `${downloaded} downloaded` });
-      }
-    },
-    [groups, images, getGroupTransforms, toast],
-  );
+  const downloadOriginal = (img: ExtractedImage) => {
+    if (!img.blob) {
+      toast({ title: "Cannot download", description: img.fetchError ?? "No image data", variant: "destructive" });
+      return;
+    }
+    downloadImage(img.blob, img.filename);
+  };
 
   // Drag-drop between groups (preserved from v1, with v1 fix for empty groups).
   const onDragStart = (e: React.DragEvent, imgId: string) => {
@@ -333,7 +244,7 @@ export function ImageExtractorTool() {
                         onClick={() => setCombineOpenGroupId(g.id)}
                         className="h-7 px-2 text-xs"
                       >
-                        Combine Images
+                        Image Combiner
                       </Button>
                       {gIdx > 0 && (
                         <Button
@@ -403,37 +314,6 @@ export function ImageExtractorTool() {
                       );
                     })}
                   </div>
-
-                  {/* Per-group Tools sub-panel (collapsible, optional). */}
-                  <Collapsible
-                    open={!!toolsOpen[g.id]}
-                    onOpenChange={(o) =>
-                      setToolsOpen((prev) => ({ ...prev, [g.id]: o }))
-                    }
-                    className="mt-3 border-t border-border/50 pt-2"
-                  >
-                    <CollapsibleTrigger asChild>
-                      <Button variant="ghost" size="sm" className="w-full justify-between">
-                        Tools (optional — applied to Download all)
-                        <ChevronDown
-                          className={`h-4 w-4 transition-transform ${toolsOpen[g.id] ? "rotate-180" : ""}`}
-                        />
-                      </Button>
-                    </CollapsibleTrigger>
-                    <CollapsibleContent className="pt-2">
-                      <GroupTransformsPanel
-                        gid={g.id}
-                        transforms={getGroupTransforms(g.id)}
-                        setTransforms={(t) => setGroupTransformsFor(g.id, t)}
-                      />
-                      <Button
-                        onClick={() => downloadGroupAll(g.id)}
-                        className="w-full mt-3"
-                      >
-                        Download all
-                      </Button>
-                    </CollapsibleContent>
-                  </Collapsible>
                 </div>
               ))}
             </div>
@@ -441,7 +321,7 @@ export function ImageExtractorTool() {
         </CardContent>
       </Card>
 
-      {/* Image Combiner modal — mounts when a group's "Combine Images" is clicked. */}
+      {/* Image Combiner modal — mounts when a group's "Image Combiner" button is clicked. */}
       <ImageCombinerModal
         groupId={combineGroup?.id ?? ""}
         images={combineImages}
@@ -459,154 +339,6 @@ export function ImageExtractorTool() {
           max-width: 100%;
         }
       `}</style>
-    </div>
-  );
-}
-
-interface GroupTransformsPanelProps {
-  gid: string;
-  transforms: GroupTransformOptions;
-  setTransforms: (t: GroupTransformOptions) => void;
-}
-
-function GroupTransformsPanel({ transforms, setTransforms }: GroupTransformsPanelProps) {
-  const update = (patch: Partial<GroupTransformOptions>) =>
-    setTransforms({ ...transforms, ...patch });
-  return (
-    <div className="space-y-2 text-xs">
-      <FieldRow
-        label="Compress"
-        enabled={transforms.compress.enabled}
-        onToggle={(v) =>
-          update({ compress: { quality: 80, ...transforms.compress, enabled: v } })
-        }
-      >
-        <Input
-          type="number"
-          min={1}
-          max={100}
-          value={transforms.compress.quality}
-          onChange={(e) =>
-            update({ compress: { ...transforms.compress!, quality: Number(e.target.value) } })
-          }
-          className="w-20 h-7"
-          disabled={!transforms.compress.enabled}
-        />
-      </FieldRow>
-      <FieldRow
-        label="Format"
-        enabled={transforms.format.enabled}
-        onToggle={(v) =>
-          update({ format: { target: "png", ...transforms.format, enabled: v } })
-        }
-      >
-        <select
-          value={transforms.format.target}
-          onChange={(e) =>
-            update({ format: { ...transforms.format!, target: e.target.value as TargetFormat } })
-          }
-          className="h-7 bg-background border border-border rounded px-2"
-          disabled={!transforms.format.enabled}
-        >
-          <option value="png">PNG</option>
-          <option value="jpeg">JPEG</option>
-          <option value="webp">WebP</option>
-        </select>
-      </FieldRow>
-      <FieldRow
-        label="Resize"
-        enabled={transforms.resize.enabled}
-        onToggle={(v) =>
-          update({ resize: { mode: "exact", ...transforms.resize, enabled: v } })
-        }
-      >
-        <div className="flex items-center gap-1">
-          <Input
-            type="number"
-            placeholder="W"
-            value={transforms.resize.width ?? ""}
-            onChange={(e) =>
-              update({
-                resize: {
-                  ...transforms.resize!,
-                  width: e.target.value ? Number(e.target.value) : undefined,
-                },
-              })
-            }
-            className="w-16 h-7"
-            disabled={!transforms.resize.enabled}
-          />
-          <span>×</span>
-          <Input
-            type="number"
-            placeholder="H"
-            value={transforms.resize.height ?? ""}
-            onChange={(e) =>
-              update({
-                resize: {
-                  ...transforms.resize!,
-                  height: e.target.value ? Number(e.target.value) : undefined,
-                },
-              })
-            }
-            className="w-16 h-7"
-            disabled={!transforms.resize.enabled}
-          />
-        </div>
-      </FieldRow>
-      <FieldRow
-        label="Upscale"
-        enabled={transforms.upscale.enabled}
-        onToggle={(v) =>
-          update({ upscale: { factor: 2, ...transforms.upscale, enabled: v } })
-        }
-      >
-        <select
-          value={transforms.upscale.factor}
-          onChange={(e) =>
-            update({ upscale: { ...transforms.upscale!, factor: Number(e.target.value) as 1.5 | 2 | 3 | 4 } })
-          }
-          className="h-7 bg-background border border-border rounded px-2"
-          disabled={!transforms.upscale.enabled}
-        >
-          <option value={1.5}>1.5×</option>
-          <option value={2}>2×</option>
-          <option value={3}>3×</option>
-          <option value={4}>4×</option>
-        </select>
-      </FieldRow>
-      <div className="flex items-center gap-2">
-        <Checkbox
-          id={`strip-exif-${transforms ? "x" : "y"}`}
-          checked={transforms.stripExif}
-          onCheckedChange={(v) => update({ stripExif: !!v })}
-        />
-        <Label className="text-xs">Strip EXIF / metadata</Label>
-      </div>
-    </div>
-  );
-}
-
-function FieldRow({
-  label,
-  enabled,
-  onToggle,
-  children,
-}: {
-  label: string;
-  enabled?: boolean;
-  onToggle: (v: boolean) => void;
-  children: ReactNode;
-}) {
-  return (
-    <div className="flex items-center gap-2">
-      <Checkbox
-        id={`field-${label}`}
-        checked={!!enabled}
-        onCheckedChange={(v) => onToggle(!!v)}
-      />
-      <Label htmlFor={`field-${label}`} className="text-xs w-20">{label}</Label>
-      {children}
     </div>
   );
 }
