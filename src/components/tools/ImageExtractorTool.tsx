@@ -1,25 +1,22 @@
-import { useEffect, useMemo, useRef, useState, useCallback } from "react";
+﻿import { useEffect, useMemo, useRef, useState, useCallback, type ReactNode } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
-import { ChevronDown, Download, X, GitMerge } from "lucide-react";
+import { ChevronDown, Download, GitMerge, X } from "lucide-react";
 import { extractImages, downloadImage, type ExtractedImage } from "@/lib/image-extractor/extractor";
 import { groupImages, type ImageGroup, type LayoutHint } from "@/lib/image-extractor/grouping";
 import {
   applyTransforms,
-  type TransformPipeline,
   type TargetFormat,
+  type TransformPipeline,
 } from "@/lib/image-transforms/transforms";
+import { ImageCombinerModal } from "./ImageCombinerModal";
 
-interface TransformOptions {
+interface GroupTransformOptions {
   compress: { enabled: boolean; quality: number };
   format: { enabled: boolean; target: TargetFormat };
   resize: { enabled: boolean; mode: "exact" | "fit" | "fill"; width?: number; height?: number };
@@ -27,7 +24,7 @@ interface TransformOptions {
   stripExif: boolean;
 }
 
-const DEFAULT_TRANSFORMS: TransformOptions = {
+const DEFAULT_GROUP_TRANSFORMS: GroupTransformOptions = {
   compress: { enabled: false, quality: 80 },
   format: { enabled: false, target: "png" },
   resize: { enabled: false, mode: "exact" },
@@ -35,25 +32,43 @@ const DEFAULT_TRANSFORMS: TransformOptions = {
   stripExif: false,
 };
 
+function rebuildPipeline(t: GroupTransformOptions): TransformPipeline {
+  const p: TransformPipeline = {};
+  if (t.upscale.enabled) p.upscale = { factor: t.upscale.factor };
+  if (t.resize.enabled && t.resize.width && t.resize.height) {
+    p.resize = {
+      mode: t.resize.mode,
+      width: t.resize.width,
+      height: t.resize.height,
+    };
+  }
+  if (t.format.enabled) p.format = { target: t.format.target };
+  if (t.stripExif) p.stripExif = true;
+  if (t.compress.enabled) p.compress = { quality: t.compress.quality };
+  return p;
+}
+
 export function ImageExtractorTool() {
   const { toast } = useToast();
   const inputAreaRef = useRef<HTMLDivElement>(null);
-  const [inputHtml, setInputHtml] = useState<string>("");
+  const [inputHtml, setInputHtml] = useState("");
   const [images, setImages] = useState<Record<string, ExtractedImage>>({});
   const [groups, setGroups] = useState<ImageGroup[]>([]);
   const [loading, setLoading] = useState(false);
-  const [transforms, setTransforms] = useState<TransformOptions>(DEFAULT_TRANSFORMS);
-  const [settingsOpen, setSettingsOpen] = useState(true);
+  const [groupTransforms, setGroupTransforms] = useState<Record<string, GroupTransformOptions>>({});
+  const [toolsOpen, setToolsOpen] = useState<Record<string, boolean>>({});
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [combineOpenGroupId, setCombineOpenGroupId] = useState<string | null>(null);
   const draggedImageId = useRef<string | null>(null);
 
+  // Paste handler: passthrough, then read innerHTML (preserved from v1).
   useEffect(() => {
     const el = inputAreaRef.current;
     if (!el) return;
     const onPaste = () => {
       setTimeout(() => {
-        const html = el.innerHTML;
-        if (html.trim()) setInputHtml(html);
+        const content = el.innerHTML;
+        if (content.trim()) setInputHtml(content);
       }, 10);
     };
     const onInput = () => setInputHtml(el.innerHTML);
@@ -65,6 +80,7 @@ export function ImageExtractorTool() {
     };
   }, []);
 
+  // Extract + group on inputHtml change (debounced) — using v2 separator algorithm.
   useEffect(() => {
     if (!inputHtml.trim()) {
       setImages({});
@@ -104,47 +120,66 @@ export function ImageExtractorTool() {
     setInputHtml("");
     setImages({});
     setGroups([]);
+    setSelectedIds(new Set());
+    setGroupTransforms({});
+    setToolsOpen({});
   }, []);
 
-  const rebuildPipeline = (): TransformPipeline => {
-    const p: TransformPipeline = {};
-    if (transforms.upscale?.enabled) p.upscale = { factor: transforms.upscale.factor };
-    if (transforms.resize?.enabled && transforms.resize.width && transforms.resize.height) {
-      p.resize = {
-        mode: transforms.resize.mode,
-        width: transforms.resize.width,
-        height: transforms.resize.height,
-      };
-    }
-    if (transforms.format?.enabled) p.format = { target: transforms.format.target };
-    if (transforms.stripExif) p.stripExif = true;
-    if (transforms.compress?.enabled) p.compress = { quality: transforms.compress.quality };
-    return p;
-  };
+  const getGroupTransforms = (gid: string): GroupTransformOptions =>
+    groupTransforms[gid] ?? DEFAULT_GROUP_TRANSFORMS;
+  const setGroupTransformsFor = (gid: string, t: GroupTransformOptions) =>
+    setGroupTransforms((prev) => ({ ...prev, [gid]: t }));
 
-  const handleDownload = useCallback(
-    async (img: ExtractedImage) => {
+  // Per-image original download (no transforms).
+  const downloadOriginal = useCallback(
+    (img: ExtractedImage) => {
       if (!img.blob) {
         toast({ title: "Cannot download", description: img.fetchError ?? "No image data", variant: "destructive" });
         return;
       }
-      try {
-        const pipeline = rebuildPipeline();
-        const out = pipeline && Object.keys(pipeline).length > 0
-          ? await applyTransforms(img.blob, pipeline)
-          : img.blob;
-        downloadImage(out, img.filename);
-      } catch (e) {
-        toast({
-          title: "Transform failed — downloading original",
-          description: e instanceof Error ? e.message : String(e),
-        });
-        downloadImage(img.blob, img.filename);
-      }
+      downloadImage(img.blob, img.filename);
     },
-    [transforms, toast],
+    [toast],
   );
 
+  // Group Download all: apply group's transforms to each image, loop downloads.
+  const downloadGroupAll = useCallback(
+    async (gid: string) => {
+      const group = groups.find((g) => g.id === gid);
+      if (!group) return;
+      const t = getGroupTransforms(gid);
+      const pipeline = rebuildPipeline(t);
+      const hasTransform = Object.keys(pipeline).length > 0;
+      let skipped = 0;
+      let downloaded = 0;
+      for (const imgId of group.imageIds) {
+        const img = images[imgId];
+        if (!img || !img.blob) {
+          skipped++;
+          continue;
+        }
+        try {
+          const out = hasTransform ? await applyTransforms(img.blob, pipeline) : img.blob;
+          downloadImage(out, img.filename);
+          downloaded++;
+        } catch (e) {
+          skipped++;
+          console.error("transform failed for", img.filename, e);
+        }
+      }
+      if (skipped > 0) {
+        toast({
+          title: `${downloaded} downloaded, ${skipped} skipped (fetch/transform failed)`,
+          variant: skipped > downloaded ? "destructive" : "default",
+        });
+      } else if (downloaded > 0) {
+        toast({ title: `${downloaded} downloaded` });
+      }
+    },
+    [groups, images, getGroupTransforms, toast],
+  );
+
+  // Drag-drop between groups (preserved from v1, with v1 fix for empty groups).
   const onDragStart = (e: React.DragEvent, imgId: string) => {
     draggedImageId.current = imgId;
     e.dataTransfer.effectAllowed = "move";
@@ -160,8 +195,6 @@ export function ImageExtractorTool() {
     e.preventDefault();
     const imgId = e.dataTransfer.getData("text/plain") || draggedImageId.current;
     if (!imgId) return;
-    const img = images[imgId];
-    if (!img) return;
     let sourceGroupId: string | null = null;
     for (const g of groups) {
       if (g.imageIds.includes(imgId)) {
@@ -203,7 +236,7 @@ export function ImageExtractorTool() {
       id: `g${Math.max(...groups.map((g) => Number(g.id.slice(1)) || 0), 0) + 1}`,
       label: `Group ${groups.length + 1}`,
       imageIds: toSplit,
-      layoutHint: toSplit.length > 1 ? "horizontal" : "horizontal",
+      layoutHint: "horizontal",
     };
     setGroups((prev) => {
       const updated = prev.flatMap((g) => {
@@ -221,32 +254,31 @@ export function ImageExtractorTool() {
     if (sourceGroupId === targetGroupId) return;
     const source = groups.find((g) => g.id === sourceGroupId);
     if (!source) return;
-    setGroups((prev) => {
-      const updated = prev.flatMap((g) => {
+    setGroups((prev) =>
+      prev.flatMap((g) => {
         if (g.id === targetGroupId) {
           return [{ ...g, imageIds: [...g.imageIds, ...source.imageIds] }];
         }
         if (g.id === sourceGroupId) return [];
         return [g];
-      });
-      return updated;
-    });
+      }),
+    );
   };
 
-  const removeEmptyGroups = (next: ImageGroup[]): ImageGroup[] =>
-    next.filter((g) => g.imageIds.length > 0);
-
-  useEffect(() => {
-    setGroups((prev) => removeEmptyGroups(prev));
-  }, [images]);
+  // Compute the images for the open Combine modal (lazily).
+  const combineGroup = combineOpenGroupId
+    ? groups.find((g) => g.id === combineOpenGroupId) ?? null
+    : null;
+  const combineImages = combineGroup
+    ? combineGroup.imageIds.map((id) => images[id]).filter((i): i is ExtractedImage => !!i)
+    : [];
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      {/* LEFT: paste area */}
       <Card className="flex flex-col">
         <CardHeader className="flex flex-row items-center justify-between pb-2">
-          <CardTitle className="text-sm uppercase tracking-wide text-muted-foreground">
-            Input
-          </CardTitle>
+          <CardTitle className="text-sm uppercase tracking-wide text-muted-foreground">Input</CardTitle>
           {inputHtml && (
             <Button variant="ghost" size="sm" onClick={clearAll} title="Clear">
               <X className="h-4 w-4" />
@@ -258,7 +290,7 @@ export function ImageExtractorTool() {
             ref={inputAreaRef}
             contentEditable
             data-placeholder="Paste content from Google Docs / Word here..."
-            className="flex-1 min-h-[300px] max-h-[60vh] p-4 text-sm bg-background border border-border rounded-lg overflow-auto focus:outline-none focus:ring-2 focus:ring-primary/20"
+            className="flex-1 min-h-[300px] max-h-[60vh] p-4 text-sm bg-background border border-border rounded-lg overflow-auto focus:outline-none focus:ring-2 focus:ring-primary/20 input-editable"
             style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}
           />
           {loading && (
@@ -267,29 +299,16 @@ export function ImageExtractorTool() {
         </CardContent>
       </Card>
 
+      {/* RIGHT: extracted groups */}
       <Card className="flex flex-col">
         <CardHeader className="flex flex-row items-center justify-between pb-2">
-          <CardTitle className="text-sm uppercase tracking-wide text-muted-foreground">
-            Extracted
-          </CardTitle>
+          <CardTitle className="text-sm uppercase tracking-wide text-muted-foreground">Extracted</CardTitle>
           <span className="text-xs text-muted-foreground">
             {Object.keys(images).length} image{Object.keys(images).length === 1 ? "" : "s"} ·{" "}
             {groups.length} group{groups.length === 1 ? "" : "s"}
           </span>
         </CardHeader>
         <CardContent className="flex-1 flex flex-col gap-4">
-          <Collapsible open={settingsOpen} onOpenChange={setSettingsOpen}>
-            <CollapsibleTrigger asChild>
-              <Button variant="outline" size="sm" className="w-full justify-between">
-                Transform settings (applied on download)
-                <ChevronDown className={`h-4 w-4 transition-transform ${settingsOpen ? "rotate-180" : ""}`} />
-              </Button>
-            </CollapsibleTrigger>
-            <CollapsibleContent className="space-y-3 pt-3">
-              <TransformsPanel transforms={transforms} setTransforms={setTransforms} />
-            </CollapsibleContent>
-          </Collapsible>
-
           {groups.length === 0 ? (
             <p className="text-sm text-muted-foreground">
               Paste content with images to see them grouped here.
@@ -308,7 +327,14 @@ export function ImageExtractorTool() {
                       {g.label} · <span className="text-muted-foreground">{g.layoutHint}</span>
                     </span>
                     <div className="flex items-center gap-2">
-                      <span className="text-xs text-muted-foreground">{g.imageIds.length} images</span>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setCombineOpenGroupId(g.id)}
+                        className="h-7 px-2 text-xs"
+                      >
+                        Combine Images
+                      </Button>
                       {gIdx > 0 && (
                         <Button
                           variant="ghost"
@@ -332,7 +358,8 @@ export function ImageExtractorTool() {
                       )}
                     </div>
                   </div>
-                  <div className={gridClassFor(g.layoutHint)}>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                     {g.imageIds.map((id) => {
                       const img = images[id];
                       if (!img) return null;
@@ -363,9 +390,9 @@ export function ImageExtractorTool() {
                             aria-label={`Select ${img.filename}`}
                           />
                           <button
-                            onClick={() => handleDownload(img)}
+                            onClick={() => downloadOriginal(img)}
                             className="absolute bottom-1 right-1 bg-background/80 backdrop-blur p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity"
-                            title="Download"
+                            title="Download original"
                           >
                             <Download className="h-3.5 w-3.5" />
                           </button>
@@ -376,67 +403,171 @@ export function ImageExtractorTool() {
                       );
                     })}
                   </div>
+
+                  {/* Per-group Tools sub-panel (collapsible, optional). */}
+                  <Collapsible
+                    open={!!toolsOpen[g.id]}
+                    onOpenChange={(o) =>
+                      setToolsOpen((prev) => ({ ...prev, [g.id]: o }))
+                    }
+                    className="mt-3 border-t border-border/50 pt-2"
+                  >
+                    <CollapsibleTrigger asChild>
+                      <Button variant="ghost" size="sm" className="w-full justify-between">
+                        Tools (optional — applied to Download all)
+                        <ChevronDown
+                          className={`h-4 w-4 transition-transform ${toolsOpen[g.id] ? "rotate-180" : ""}`}
+                        />
+                      </Button>
+                    </CollapsibleTrigger>
+                    <CollapsibleContent className="pt-2">
+                      <GroupTransformsPanel
+                        gid={g.id}
+                        transforms={getGroupTransforms(g.id)}
+                        setTransforms={(t) => setGroupTransformsFor(g.id, t)}
+                      />
+                      <Button
+                        onClick={() => downloadGroupAll(g.id)}
+                        className="w-full mt-3"
+                      >
+                        Download all
+                      </Button>
+                    </CollapsibleContent>
+                  </Collapsible>
                 </div>
               ))}
             </div>
           )}
         </CardContent>
       </Card>
+
+      {/* Image Combiner modal — mounts when a group's "Combine Images" is clicked. */}
+      <ImageCombinerModal
+        groupId={combineGroup?.id ?? ""}
+        images={combineImages}
+        open={!!combineOpenGroupId}
+        onOpenChange={(o) => { if (!o) setCombineOpenGroupId(null); }}
+      />
+
+      {/* Layout fix: pasted images must render inline-by-default. */}
+      <style>{`
+        .input-editable img,
+        .input-editable table,
+        .input-editable p {
+          display: inline-block !important;
+          vertical-align: middle;
+          max-width: 100%;
+        }
+      `}</style>
     </div>
   );
 }
 
-function gridClassFor(hint: LayoutHint): string {
-  if (hint === "horizontal") return "flex flex-wrap gap-2";
-  if (hint === "vertical") return "flex flex-col gap-2";
-  return "grid grid-cols-2 sm:grid-cols-3 gap-2";
+interface GroupTransformsPanelProps {
+  gid: string;
+  transforms: GroupTransformOptions;
+  setTransforms: (t: GroupTransformOptions) => void;
 }
 
-interface TransformsPanelProps {
-  transforms: TransformOptions;
-  setTransforms: (t: TransformOptions) => void;
-}
-
-function TransformsPanel({ transforms, setTransforms }: TransformsPanelProps) {
-  const update = (patch: Partial<TransformOptions>) => setTransforms({ ...transforms, ...patch });
+function GroupTransformsPanel({ transforms, setTransforms }: GroupTransformsPanelProps) {
+  const update = (patch: Partial<GroupTransformOptions>) =>
+    setTransforms({ ...transforms, ...patch });
   return (
-    <div className="space-y-3 text-xs">
-      <FieldRow label="Compress" enabled={transforms.compress?.enabled} onToggle={(v) => update({ compress: { quality: 80, ...transforms.compress, enabled: v } })}>
+    <div className="space-y-2 text-xs">
+      <FieldRow
+        label="Compress"
+        enabled={transforms.compress.enabled}
+        onToggle={(v) =>
+          update({ compress: { quality: 80, ...transforms.compress, enabled: v } })
+        }
+      >
         <Input
           type="number"
           min={1}
           max={100}
-          value={transforms.compress?.quality ?? 80}
-          onChange={(e) => update({ compress: { ...transforms.compress!, quality: Number(e.target.value) } })}
+          value={transforms.compress.quality}
+          onChange={(e) =>
+            update({ compress: { ...transforms.compress!, quality: Number(e.target.value) } })
+          }
           className="w-20 h-7"
-          disabled={!transforms.compress?.enabled}
+          disabled={!transforms.compress.enabled}
         />
       </FieldRow>
-      <FieldRow label="Format" enabled={transforms.format?.enabled} onToggle={(v) => update({ format: { target: "png", ...transforms.format, enabled: v } })}>
+      <FieldRow
+        label="Format"
+        enabled={transforms.format.enabled}
+        onToggle={(v) =>
+          update({ format: { target: "png", ...transforms.format, enabled: v } })
+        }
+      >
         <select
-          value={transforms.format?.target ?? "png"}
-          onChange={(e) => update({ format: { ...transforms.format!, target: e.target.value as any } })}
+          value={transforms.format.target}
+          onChange={(e) =>
+            update({ format: { ...transforms.format!, target: e.target.value as TargetFormat } })
+          }
           className="h-7 bg-background border border-border rounded px-2"
-          disabled={!transforms.format?.enabled}
+          disabled={!transforms.format.enabled}
         >
           <option value="png">PNG</option>
           <option value="jpeg">JPEG</option>
           <option value="webp">WebP</option>
         </select>
       </FieldRow>
-      <FieldRow label="Resize" enabled={transforms.resize?.enabled} onToggle={(v) => update({ resize: { mode: "exact", ...transforms.resize, enabled: v } })}>
+      <FieldRow
+        label="Resize"
+        enabled={transforms.resize.enabled}
+        onToggle={(v) =>
+          update({ resize: { mode: "exact", ...transforms.resize, enabled: v } })
+        }
+      >
         <div className="flex items-center gap-1">
-          <Input type="number" placeholder="W" value={transforms.resize?.width ?? ""} onChange={(e) => update({ resize: { ...transforms.resize!, width: e.target.value ? Number(e.target.value) : undefined } })} className="w-16 h-7" disabled={!transforms.resize?.enabled} />
+          <Input
+            type="number"
+            placeholder="W"
+            value={transforms.resize.width ?? ""}
+            onChange={(e) =>
+              update({
+                resize: {
+                  ...transforms.resize!,
+                  width: e.target.value ? Number(e.target.value) : undefined,
+                },
+              })
+            }
+            className="w-16 h-7"
+            disabled={!transforms.resize.enabled}
+          />
           <span>×</span>
-          <Input type="number" placeholder="H" value={transforms.resize?.height ?? ""} onChange={(e) => update({ resize: { ...transforms.resize!, height: e.target.value ? Number(e.target.value) : undefined } })} className="w-16 h-7" disabled={!transforms.resize?.enabled} />
+          <Input
+            type="number"
+            placeholder="H"
+            value={transforms.resize.height ?? ""}
+            onChange={(e) =>
+              update({
+                resize: {
+                  ...transforms.resize!,
+                  height: e.target.value ? Number(e.target.value) : undefined,
+                },
+              })
+            }
+            className="w-16 h-7"
+            disabled={!transforms.resize.enabled}
+          />
         </div>
       </FieldRow>
-      <FieldRow label="Upscale" enabled={transforms.upscale?.enabled} onToggle={(v) => update({ upscale: { factor: 2, ...transforms.upscale, enabled: v } })}>
+      <FieldRow
+        label="Upscale"
+        enabled={transforms.upscale.enabled}
+        onToggle={(v) =>
+          update({ upscale: { factor: 2, ...transforms.upscale, enabled: v } })
+        }
+      >
         <select
-          value={transforms.upscale?.factor ?? 2}
-          onChange={(e) => update({ upscale: { ...transforms.upscale!, factor: Number(e.target.value) as any } })}
+          value={transforms.upscale.factor}
+          onChange={(e) =>
+            update({ upscale: { ...transforms.upscale!, factor: Number(e.target.value) as 1.5 | 2 | 3 | 4 } })
+          }
           className="h-7 bg-background border border-border rounded px-2"
-          disabled={!transforms.upscale?.enabled}
+          disabled={!transforms.upscale.enabled}
         >
           <option value={1.5}>1.5×</option>
           <option value={2}>2×</option>
@@ -446,11 +577,11 @@ function TransformsPanel({ transforms, setTransforms }: TransformsPanelProps) {
       </FieldRow>
       <div className="flex items-center gap-2">
         <Checkbox
-          id="strip-exif"
+          id={`strip-exif-${transforms ? "x" : "y"}`}
           checked={transforms.stripExif}
           onCheckedChange={(v) => update({ stripExif: !!v })}
         />
-        <Label htmlFor="strip-exif" className="text-xs">Strip EXIF / metadata</Label>
+        <Label className="text-xs">Strip EXIF / metadata</Label>
       </div>
     </div>
   );
@@ -465,7 +596,7 @@ function FieldRow({
   label: string;
   enabled?: boolean;
   onToggle: (v: boolean) => void;
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   return (
     <div className="flex items-center gap-2">
