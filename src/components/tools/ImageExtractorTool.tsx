@@ -7,6 +7,9 @@ import { Download, GitMerge, X } from "lucide-react";
 import { extractImages, downloadImage, type ExtractedImage } from "@/lib/image-extractor/extractor";
 import { groupImages, type ImageGroup, type LayoutHint } from "@/lib/image-extractor/grouping";
 import { ImageCombinerModal } from "./ImageCombinerModal";
+import { ImageExtractorZipDrop } from "./ImageExtractorZipDrop";
+
+const ENABLE_ZIP_UPLOAD = true;
 
 export function ImageExtractorTool() {
   const { toast } = useToast();
@@ -207,7 +210,11 @@ export function ImageExtractorTool() {
     : [];
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+    <div className="space-y-4">
+      {ENABLE_ZIP_UPLOAD && (
+        <ImageExtractorZipDrop onHtmlLoaded={setInputHtml} />
+      )}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
       {/* LEFT: paste area */}
       <Card className="flex flex-col">
         <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -368,6 +375,7 @@ export function ImageExtractorTool() {
           max-width: 100%;
         }
       `}</style>
+      </div>
     </div>
   );
 }
