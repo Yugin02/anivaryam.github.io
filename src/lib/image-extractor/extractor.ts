@@ -53,8 +53,7 @@ function inferExtension(src: string): string {
 export function formatImageName(src: string, alt: string, index: number): string {
   let base = (alt || "").trim();
   if (!base) base = `image-${index + 1}`;
-  // Replace any non-alphanumeric/underscore/dash/dot with underscore
-  base = base.replace(/[^a-zA-Z0-9_\-.]/g, "_").replace(/_+/g, "_");
+  base = base.replace(/[^a-zA-Z0-9_\-.\s]/g, "_").replace(/_+/g, "_");
   base = base.replace(/^_+|_+$/g, "");
   if (!base) base = `image-${index + 1}`;
   const ext = inferExtension(src);

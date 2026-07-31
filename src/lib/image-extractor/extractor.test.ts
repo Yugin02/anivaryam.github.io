@@ -9,7 +9,12 @@ describe("formatImageName", () => {
   });
 
   it("sanitizes alt text to be filename-safe with extension appended", () => {
-    expect(formatImageName("x", "my photo /test 1", 5)).toBe("my_photo_test_1.png");
+    expect(formatImageName("x", "my photo /test 1", 5)).toBe("my photo _test 1.png");
+  });
+
+  it("preserves spaces in the alt text when forming the filename", () => {
+    expect(formatImageName("x", "A red circle", 0)).toBe("A red circle.png");
+    expect(formatImageName("x", "Hero banner footer", 0)).toBe("Hero banner footer.png");
   });
 
   it("falls back to image-N with extension when alt is empty", () => {
@@ -78,7 +83,7 @@ describe("extractImages", () => {
     const result = await extractImages(html);
     expect(result.length).toBe(1);
     expect(result[0]!.alt).toBe("A red circle");
-    expect(result[0]!.filename).toBe("A_red_circle.png");
+    expect(result[0]!.filename).toBe("A red circle.png");
   });
 
   it("uses 'alt image text:' prefix in the surrounding paragraph as the alt", async () => {
