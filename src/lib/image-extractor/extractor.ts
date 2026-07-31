@@ -85,7 +85,7 @@ export async function srcToBlob(src: string): Promise<Blob> {
   if (trimmed.startsWith("data:")) {
     return dataUriToBlob(trimmed);
   }
-  if (/^https?:\/\//i.test(trimmed)) {
+  if (/^(https?:|blob:)/i.test(trimmed)) {
     return httpToBlob(trimmed);
   }
   throw new Error(`Unsupported src protocol: ${trimmed.slice(0, 40)}`);

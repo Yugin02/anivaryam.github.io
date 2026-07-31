@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { formatImageName, extractImages } from "./extractor";
 
 describe("formatImageName", () => {
@@ -48,5 +48,26 @@ describe("extractImages", () => {
     expect(result.length).toBe(1);
     expect(result[0]!.blob).toBeNull();
     expect(result[0]!.fetchError).toBeDefined();
+  });
+
+  it("extracts a blob: URL by fetching it (used by the zip loader rewrite)", async () => {
+    const fakeFetch = vi.fn(async () => new Response(new Blob([])));
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = fakeFetch as typeof fetch;
+    try {
+      const result = await extractImages(
+        '<img src="blob:https://example.com/abc-12345" alt="blob-img" />',
+      );
+      expect(result.length).toBe(1);
+      expect(result[0]!.alt).toBe("blob-img");
+      expect(result[0]!.fetchError).toBeUndefined();
+      expect(fakeFetch).toHaveBeenCalledTimes(1);
+      expect(fakeFetch).toHaveBeenCalledWith(
+        "blob:https://example.com/abc-12345",
+        expect.objectContaining({ mode: "cors" }),
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 });
