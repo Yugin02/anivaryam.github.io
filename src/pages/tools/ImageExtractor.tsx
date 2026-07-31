@@ -58,15 +58,15 @@ export default function ImageExtractorPage() {
           </BreadcrumbList>
         </Breadcrumb>
 
-        <div className="text-center mb-8">
+        <div className="text-left mb-8">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-accent/10 text-accent-foreground text-sm font-mono mb-4">
             <Images className="h-4 w-4" />
             Online Tools
           </div>
-          <h1 className="text-3xl lg:text-4xl font-bold mb-4">
+          <h1 className="text-3xl lg:text-4xl font-bold mb-4 text-foreground">
             Image Extractor
           </h1>
-          <p className="text-muted-foreground max-w-xl mx-auto text-sm">
+          <p className="text-muted-foreground max-w-xl text-sm">
             Paste a draft from Google Docs or Word and instantly extract every image, grouped by its source layout. Apply compress, format, resize, or strip-EXIF transforms before downloading — entirely in your browser.
           </p>
         </div>

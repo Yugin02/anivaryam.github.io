@@ -102,7 +102,7 @@ export function ImageExtractorZipDrop({ onHtmlLoaded }: ImageExtractorZipDropPro
           <div className="flex items-center gap-2 min-w-0">
             <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-500 flex-shrink-0" aria-hidden="true" />
             <div className="min-w-0">
-              <p className="text-sm font-medium truncate" title={loadedFile.name}>
+              <p className="text-sm font-medium truncate text-foreground" title={loadedFile.name}>
                 {loadedFile.name}
               </p>
               <p className="text-xs text-muted-foreground">{formatSize(loadedFile.size)} loaded</p>
