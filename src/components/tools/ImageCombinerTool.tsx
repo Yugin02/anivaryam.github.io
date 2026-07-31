@@ -361,9 +361,10 @@ export function ImageCombinerTool({ initialFiles }: ImageCombinerToolProps = {})
           height: dims.height,
           name: f.name,
         });
-      } catch {
+      } catch (e) {
         URL.revokeObjectURL(url);
         imageUrlRefs.current.delete(id);
+        console.warn("Could not read image", f.name, e);
         toast({ title: "Could not read image", description: f.name, variant: "destructive" });
       }
     }
