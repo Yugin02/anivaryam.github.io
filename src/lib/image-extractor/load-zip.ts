@@ -2,6 +2,23 @@ import JSZip from "jszip";
 
 const ABSOLUTE_IMAGE_SOURCE = /^(?:https?|data|blob|file):/i;
 
+const EXTENSION_TO_MIME: Record<string, string> = {
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  gif: "image/gif",
+  webp: "image/webp",
+  svg: "image/svg+xml",
+  bmp: "image/bmp",
+  avif: "image/avif",
+};
+
+function inferMimeFromName(name: string): string | null {
+  const match = name.toLowerCase().match(/\.([a-z0-9]+)$/);
+  if (!match) return null;
+  return EXTENSION_TO_MIME[match[1]!] ?? null;
+}
+
 function resolvePath(base: string, relative: string): string {
   const segments = `${base}/${relative}`.replaceAll("\\", "/").split("/");
   const resolved: string[] = [];
@@ -45,7 +62,9 @@ export async function loadZipAsHtml(file: File): Promise<string> {
     const imageEntry = zip.file(resolvePath(htmlDirectory, source));
     if (imageEntry === null) continue;
 
-    const blob = await imageEntry.async("blob");
+    const rawBlob = await imageEntry.async("blob");
+    const mime = inferMimeFromName(imageEntry.name);
+    const blob = rawBlob.type || !mime ? rawBlob : new Blob([await rawBlob.arrayBuffer()], { type: mime });
     image.setAttribute("src", URL.createObjectURL(blob));
   }
 

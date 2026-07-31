@@ -73,4 +73,18 @@ describe("loadZipAsHtml", () => {
     expect(actualSources).toEqual(sources);
     expect(URL.createObjectURL).not.toHaveBeenCalled();
   });
+
+  it("tags the blob URL with the correct MIME type from the file extension", async () => {
+    const zip = new JSZip();
+    zip.file("index.html", '<img src="images/photo.jpg">');
+    zip.file("images/photo.jpg", new Uint8Array([255, 216, 255]));
+    const file = await toZipFile(zip);
+
+    await loadZipAsHtml(file);
+
+    const createObjectURLCall = (URL.createObjectURL as ReturnType<typeof vi.fn>).mock
+      .calls[0]?.[0] as Blob;
+    expect(createObjectURLCall).toBeInstanceOf(Blob);
+    expect(createObjectURLCall.type).toBe("image/jpeg");
+  });
 });
