@@ -102,6 +102,27 @@ async function blobToDimensions(blob: Blob): Promise<{ width: number; height: nu
   }
 }
 
+const ALT_TEXT_PATTERNS: RegExp[] = [
+  /alt\s*text:\s*(.+?)(?=\s*(?:alt\s*text|alt\s*image\s*text|link):|$)/is,
+  /alt\s*image\s*text:\s*(.+?)(?=\s*(?:alt\s*text|alt\s*image\s*text|link):|$)/is,
+  /link:\s*(.+?)(?=\s*(?:alt\s*text|alt\s*image\s*text|link):|$)/is,
+];
+
+function detectAltTextFromContext(img: Element): string | null {
+  const container = img.closest("p, div, li");
+  if (!container) return null;
+  const text = container.textContent;
+  if (!text) return null;
+  for (const pattern of ALT_TEXT_PATTERNS) {
+    const match = text.match(pattern);
+    if (match && match[1]) {
+      const trimmed = match[1].trim();
+      if (trimmed) return trimmed;
+    }
+  }
+  return null;
+}
+
 export async function extractImages(html: string): Promise<ExtractedImage[]> {
   if (!html || typeof html !== "string") return [];
   const parser = new DOMParser();
@@ -112,7 +133,8 @@ export async function extractImages(html: string): Promise<ExtractedImage[]> {
   for (let i = 0; i < imgs.length; i++) {
     const el = imgs[i]!;
     const src = el.getAttribute("src") || "";
-    const alt = el.getAttribute("alt") || "";
+    const contextAlt = detectAltTextFromContext(el);
+    const alt = (el.getAttribute("alt") || "").trim() || contextAlt || "";
     const id = shortId();
     const filename = formatImageName(src, alt, i);
 

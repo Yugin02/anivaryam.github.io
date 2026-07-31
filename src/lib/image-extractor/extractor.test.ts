@@ -70,4 +70,50 @@ describe("extractImages", () => {
       globalThis.fetch = originalFetch;
     }
   });
+
+  it("uses 'alt text:' prefix in the surrounding paragraph as the alt", async () => {
+    const html = `<p>alt text: A red circle
+      <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=" alt="" />
+    </p>`;
+    const result = await extractImages(html);
+    expect(result.length).toBe(1);
+    expect(result[0]!.alt).toBe("A red circle");
+    expect(result[0]!.filename).toBe("A_red_circle.png");
+  });
+
+  it("uses 'alt image text:' prefix in the surrounding paragraph as the alt", async () => {
+    const html = `<p>alt image text: Hero banner footer
+      <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=" alt="" />
+    </p>`;
+    const result = await extractImages(html);
+    expect(result.length).toBe(1);
+    expect(result[0]!.alt).toBe("Hero banner footer");
+  });
+
+  it("uses 'link:' prefix from inside an anchor as the alt", async () => {
+    const html = `<p><a href="https://example.com/x.png">link: Important logo</a>
+      <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=" alt="" />
+    </p>`;
+    const result = await extractImages(html);
+    expect(result.length).toBe(1);
+    expect(result[0]!.alt).toBe("Important logo");
+  });
+
+  it("stops the alt text at the next prefix in the same paragraph", async () => {
+    const html = `<p>alt text: First image link: backup.png
+      <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=" alt="" />
+    </p>`;
+    const result = await extractImages(html);
+    expect(result.length).toBe(1);
+    expect(result[0]!.alt).toBe("First image");
+  });
+
+  it("prefers an existing alt attribute over the surrounding context", async () => {
+    const html = `<p>alt text: From context
+      <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=" alt="From attribute" />
+    </p>`;
+    const result = await extractImages(html);
+    expect(result.length).toBe(1);
+    expect(result[0]!.alt).toBe("From attribute");
+  });
 });
