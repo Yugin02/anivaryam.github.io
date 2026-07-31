@@ -111,13 +111,21 @@ const ALT_TEXT_PATTERNS: RegExp[] = [
 function detectAltTextFromContext(img: Element): string | null {
   const container = img.closest("p, div, li");
   if (!container) return null;
-  const text = container.textContent;
-  if (!text) return null;
-  for (const pattern of ALT_TEXT_PATTERNS) {
-    const match = text.match(pattern);
-    if (match && match[1]) {
-      const trimmed = match[1].trim();
-      if (trimmed) return trimmed;
+  const candidates: (Element | null)[] = [
+    container,
+    container.previousElementSibling,
+    container.nextElementSibling,
+  ];
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    const text = candidate.textContent;
+    if (!text) continue;
+    for (const pattern of ALT_TEXT_PATTERNS) {
+      const match = text.match(pattern);
+      if (match && match[1]) {
+        const trimmed = match[1].trim();
+        if (trimmed) return trimmed;
+      }
     }
   }
   return null;

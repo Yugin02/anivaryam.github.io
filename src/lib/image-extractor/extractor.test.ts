@@ -116,4 +116,15 @@ describe("extractImages", () => {
     expect(result.length).toBe(1);
     expect(result[0]!.alt).toBe("From attribute");
   });
+
+  it("uses 'alt text:' from the previous sibling paragraph when image is alone", async () => {
+    const html = `<p>alt text: First image</p>
+      <p><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=" alt="" /></p>
+      <p>alt text: Second image</p>
+      <p><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=" alt="" /></p>`;
+    const result = await extractImages(html);
+    expect(result.length).toBe(2);
+    expect(result[0]!.alt).toBe("First image");
+    expect(result[1]!.alt).toBe("Second image");
+  });
 });
