@@ -90,6 +90,13 @@ export function ImageExtractorTool() {
     return () => clearTimeout(timer);
   }, [inputHtml, toast]);
 
+  useEffect(() => {
+    const el = inputAreaRef.current;
+    if (el && el.innerHTML !== inputHtml) {
+      el.innerHTML = inputHtml;
+    }
+  }, [inputHtml]);
+
   const clearAll = () => {
     if (inputAreaRef.current) inputAreaRef.current.innerHTML = "";
     setInputHtml("");

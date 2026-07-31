@@ -1,17 +1,26 @@
 import { useRef, useState } from "react";
-import { Upload, Loader2 } from "lucide-react";
+import { Upload, Loader2, CheckCircle2, X } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { toast } from "@/hooks/use-toast";
+import { cn } from "@/lib/utils";
 import { loadZipAsHtml } from "@/lib/image-extractor/load-zip";
 
 interface ImageExtractorZipDropProps {
   onHtmlLoaded: (html: string) => void;
 }
 
+function formatSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
 export function ImageExtractorZipDrop({ onHtmlLoaded }: ImageExtractorZipDropProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [isDragOver, setIsDragOver] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [loadedFile, setLoadedFile] = useState<{ name: string; size: number } | null>(null);
   const dragCounter = useRef(0);
 
   const onDragEnter = (e: React.DragEvent) => {
@@ -49,6 +58,7 @@ export function ImageExtractorZipDrop({ onHtmlLoaded }: ImageExtractorZipDropPro
     try {
       const html = await loadZipAsHtml(file);
       onHtmlLoaded(html);
+      setLoadedFile({ name: file.name, size: file.size });
       toast({
         title: "Zip loaded",
         description: `Loaded ${file.name} from zip archive.`,
@@ -63,6 +73,11 @@ export function ImageExtractorZipDrop({ onHtmlLoaded }: ImageExtractorZipDropPro
       setIsLoading(false);
       if (inputRef.current) inputRef.current.value = "";
     }
+  };
+
+  const handleClear = () => {
+    setLoadedFile(null);
+    onHtmlLoaded("");
   };
 
   const onDrop = (e: React.DragEvent) => {
@@ -80,11 +95,40 @@ export function ImageExtractorZipDrop({ onHtmlLoaded }: ImageExtractorZipDropPro
     if (file) void handleFile(file);
   };
 
+  if (loadedFile) {
+    return (
+      <Card data-testid="zip-dropzone-loaded">
+        <CardContent className="flex items-center justify-between gap-3 py-4">
+          <div className="flex items-center gap-2 min-w-0">
+            <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-500 flex-shrink-0" aria-hidden="true" />
+            <div className="min-w-0">
+              <p className="text-sm font-medium truncate" title={loadedFile.name}>
+                {loadedFile.name}
+              </p>
+              <p className="text-xs text-muted-foreground">{formatSize(loadedFile.size)} loaded</p>
+            </div>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleClear}
+            className="flex-shrink-0"
+          >
+            <X className="h-3.5 w-3.5 mr-1" />
+            Clear
+          </Button>
+        </CardContent>
+      </Card>
+    );
+  }
+
   return (
     <Card
-      className={`relative border-dashed transition-colors ${
-        isDragOver ? "border-primary bg-primary/5" : "border-border"
-      } ${isLoading ? "opacity-60 pointer-events-none" : "cursor-pointer"}`}
+      className={cn(
+        "relative border-dashed transition-colors cursor-pointer",
+        isDragOver ? "border-primary bg-primary/5" : "border-border",
+        isLoading && "opacity-60 pointer-events-none",
+      )}
       onDragEnter={onDragEnter}
       onDragLeave={onDragLeave}
       onDragOver={onDragOver}
